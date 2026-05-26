@@ -1,0 +1,6 @@
+{
+  "name": "GCV Condomínio",
+  "description": "Portal completo para gestão condominial. Oferece controle de faturamento e boletos mensais, fluxo completo de chamados de manutenção e controle de unidades residenciais com interface de alta performance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
