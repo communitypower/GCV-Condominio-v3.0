@@ -1,0 +1,355 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UnitType {
+  apartment
+  house
+  penthouse
+}
+
+enum UnitStatus {
+  occupied
+  vacant
+  maintenance
+}
+
+enum RelationshipRole {
+  owner
+  tenant
+  dependent
+  authorized_contact
+}
+
+enum PlatformRole {
+  admin
+  syndic
+  manager
+  council_member
+  accountant
+  doorman
+  resident
+  vendor
+}
+
+enum MaintenanceCategory {
+  plumbing
+  electrical
+  elevators
+  common_area
+  security
+  gardens
+  structural
+  other
+}
+
+enum MaintenancePriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum MaintenanceStatus {
+  reported
+  in_progress
+  resolved
+  cancelled
+}
+
+enum EquipmentStatus {
+  operational
+  alert
+  critical
+  maintenance
+}
+
+enum PlanFrequency {
+  daily
+  weekly
+  monthly
+  quarterly
+  semestral
+  annual
+}
+
+enum PlanStatus {
+  active
+  suspended
+}
+
+enum BillingStatus {
+  paid
+  pending
+  overdue
+}
+
+enum AuditAction {
+  create
+  update
+  delete
+  auth_login
+  auth_logout
+  export
+  document_access
+}
+
+model Account {
+  id           String        @id @default(uuid())
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  condos       Condominium[]
+  memberships  Membership[]
+  auditEvents  AuditEvent[]
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  passwordHash String       // For dev login mock authentication
+  personId     String?      @unique
+  person       Person?      @relation(fields: [personId], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  memberships  Membership[]
+}
+
+model Person {
+  id            String             @id @default(uuid())
+  name          String
+  email         String             @unique
+  phone         String
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  user          User?
+  relationships UnitRelationship[]
+}
+
+model Condominium {
+  id             String              @id @default(uuid())
+  name           String
+  address        String
+  accountId      String
+  account        Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  buildings      Building[]
+  memberships    Membership[]
+  tickets        MaintenanceTicket[]
+  equipments     Equipment[]
+  plans          MaintenancePlan[]
+  billingPeriods BillingPeriod[]
+  documents      Document[]
+}
+
+model Building {
+  id            String      @id @default(uuid())
+  name          String
+  condominiumId String
+  condominium   Condominium @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  units         Unit[]
+}
+
+model Unit {
+  id              String             @id @default(uuid())
+  number          String
+  type            UnitType
+  status          UnitStatus
+  fractionalShare Float
+  buildingId      String
+  building        Building           @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  relationships   UnitRelationship[]
+  tickets         MaintenanceTicket[]
+  charges         Charge[]
+  documents       Document[]
+}
+
+model UnitRelationship {
+  id        String           @id @default(uuid())
+  unitId    String
+  unit      Unit             @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  personId  String
+  person    Person           @relation(fields: [personId], references: [id], onDelete: Cascade)
+  role      RelationshipRole
+  startDate DateTime         @default(now())
+  endDate   DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model Membership {
+  id            String       @id @default(uuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  condominiumId String?
+  condominium   Condominium? @relation(fields: [condominiumId], references: [id], onDelete: SetNull)
+  role          PlatformRole
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([userId, accountId, condominiumId, role])
+}
+
+model MaintenanceTicket {
+  id            String                  @id @default(uuid())
+  condominiumId String
+  condominium   Condominium             @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  unitId        String?
+  unit          Unit?                   @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  title         String
+  description   String
+  category      MaintenanceCategory
+  priority      MaintenancePriority
+  status        MaintenanceStatus
+  reportedAt    DateTime                @default(now())
+  resolvedAt    DateTime?
+  assignedStaff String?
+  estimatedCost Float?
+  actualCost    Float?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  comments      TicketComment[]
+  statusHistory TicketStatusHistory[]
+}
+
+model TicketComment {
+  id         String            @id @default(uuid())
+  ticketId   String
+  ticket     MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorName String
+  comment    String
+  createdAt  DateTime          @default(now())
+}
+
+model TicketStatusHistory {
+  id         String            @id @default(uuid())
+  ticketId   String
+  ticket     MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromStatus MaintenanceStatus
+  toStatus   MaintenanceStatus
+  changedBy  String
+  createdAt  DateTime          @default(now())
+}
+
+model Equipment {
+  id             String            @id @default(uuid())
+  condominiumId  String
+  condominium    Condominium       @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  name           String
+  location       String
+  category       String
+  status         EquipmentStatus
+  lastInspection DateTime
+  nextInspection DateTime
+  installDate    DateTime
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  plans          MaintenancePlan[]
+}
+
+model MaintenancePlan {
+  id            String        @id @default(uuid())
+  condominiumId String
+  condominium   Condominium   @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  equipmentId   String?
+  equipment     Equipment?    @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  title         String
+  description   String
+  frequency     PlanFrequency
+  nextOccurrence DateTime
+  status        PlanStatus
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model BillingPeriod {
+  id            String      @id @default(uuid())
+  condominiumId String
+  condominium   Condominium @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  monthString   String      // e.g. "2026-05"
+  closed        Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  charges       Charge[]
+}
+
+model Charge {
+  id              String            @id @default(uuid())
+  unitId          String
+  unit            Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  billingPeriodId String
+  billingPeriod   BillingPeriod     @relation(fields: [billingPeriodId], references: [id], onDelete: Cascade)
+  amount          Float
+  dueDate         DateTime
+  status          BillingStatus
+  paidAt          DateTime?
+  issueDate       DateTime          @default(now())
+  barcode         String
+  pixQrCode       String
+  description     String
+  penaltyFee      Float?
+  interestFee     Float?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  lineItems       ChargeLineItem[]
+}
+
+model ChargeLineItem {
+  id          String   @id @default(uuid())
+  chargeId    String
+  charge      Charge   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  description String
+  amount      Float
+  createdAt   DateTime @default(now())
+}
+
+model Document {
+  id            String            @id @default(uuid())
+  condominiumId String
+  condominium   Condominium       @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  unitId        String?
+  unit          Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  title         String
+  category      String
+  requiredRole  PlatformRole      @default(resident)
+  filePath      String
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  versions      DocumentVersion[]
+}
+
+model DocumentVersion {
+  id            String   @id @default(uuid())
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  filePath      String
+  uploadedBy    String
+  createdAt     DateTime @default(now())
+}
+
+model AuditEvent {
+  id        String      @id @default(uuid())
+  accountId String
+  account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId    String?
+  userEmail String?
+  action    AuditAction
+  entity    String
+  entityId  String?
+  details   String
+  ipAddress String?
+  createdAt DateTime    @default(now())
+}

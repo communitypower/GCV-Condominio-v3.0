@@ -2,13 +2,55 @@ import express from "express";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+
+import authRouter from "./server/routes/auth";
+import condosRouter from "./server/routes/condominiums";
+import buildingsRouter from "./server/routes/buildings";
+import unitsRouter from "./server/routes/units";
+import residentsRouter from "./server/routes/residents";
+import maintenanceRouter from "./server/routes/maintenance";
+import billingRouter from "./server/routes/billing";
+import equipmentRouter from "./server/routes/equipment";
+import documentsRouter from "./server/routes/documents";
+import auditRouter from "./server/routes/audit";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser(process.env.SESSION_SECRET || "gcv_local_secret"));
+
+// API Router Mounts
+app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/condominiums", condosRouter);
+app.use("/api/v1/condominiums", buildingsRouter);
+app.use("/api/v1/condominiums", unitsRouter);
+app.use("/api/v1/condominiums", residentsRouter);
+app.use("/api/v1/condominiums", maintenanceRouter);
+app.use("/api/v1/condominiums", billingRouter);
+app.use("/api/v1/condominiums", equipmentRouter);
+app.use("/api/v1/condominiums", documentsRouter);
+app.use("/api/v1/accounts", auditRouter);
 
 const PORT = 3000;
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Middleware to restrict GitHub integration
+const checkGithubIntegration = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (process.env.ENABLE_GITHUB_INTEGRATION !== "true") {
+    return res.status(403).json({ error: "Integração com GitHub desabilitada neste ambiente." });
+  }
+  next();
+};
 
 // Lazy initialize GoogleGenAI with warning on missing key
 let aiClient: GoogleGenAI | null = null;
@@ -50,9 +92,10 @@ Instruções importantes:
 4. Evite inventar informações que contrariem o estado real dos dados no JSON.
 5. Seja focado em soluções de engenharia predial preventiva e melhores práticas de economia condominial.`;
 
+    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
     // Process chat using generateContent with system instruction
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model,
       contents: prompt,
       config: {
         systemInstruction,
@@ -68,7 +111,7 @@ Instruções importantes:
 });
 
 // GET /api/auth/github/url
-app.get("/api/auth/github/url", (req, res) => {
+app.get("/api/auth/github/url", checkGithubIntegration, (req, res) => {
   const redirectUri = (req.query.redirectUri as string) || `${req.protocol}://${req.get("host")}/auth/callback`;
   const clientId = process.env.GITHUB_CLIENT_ID || process.env.CLIENT_ID;
 
@@ -185,11 +228,11 @@ const callbackHandler = async (req: any, res: any) => {
   }
 };
 
-app.get("/auth/callback", callbackHandler);
-app.get("/auth/callback/", callbackHandler);
+app.get("/auth/callback", checkGithubIntegration, callbackHandler);
+app.get("/auth/callback/", checkGithubIntegration, callbackHandler);
 
 // POST /api/github/create-gist
-app.post("/api/github/create-gist", async (req, res) => {
+app.post("/api/github/create-gist", checkGithubIntegration, async (req, res) => {
   const { token, filename, content, description } = req.body;
   if (!token) {
     return res.status(401).json({ error: "Não autorizado: token ausente." });
@@ -224,7 +267,7 @@ app.post("/api/github/create-gist", async (req, res) => {
 });
 
 // GET /api/github/repos
-app.get("/api/github/repos", async (req, res) => {
+app.get("/api/github/repos", checkGithubIntegration, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({ error: "Token ausente" });

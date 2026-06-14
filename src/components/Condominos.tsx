@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Search, Plus, Mail, Phone, Car } from 'lucide-react';
+import { Unit } from '../types';
 
 interface Condomino {
   unitId: string;
@@ -10,23 +11,45 @@ interface Condomino {
   pet: string;
 }
 
-export default function Condominos() {
+interface CondominosProps {
+  condoId: string;
+  units: Unit[];
+}
+
+export default function Condominos({ condoId, units }: CondominosProps) {
   const [search, setSearch] = useState('');
-  const [list, setList] = useState<Condomino[]>([
-    { unitId: 'A-101', name: 'Ana Beatriz Souza', phone: '(11) 98765-4321', email: 'anabeatriz@exemplo.com', plate: 'BRA-3D21', pet: 'Nenhum' },
-    { unitId: 'A-102', name: 'Carlos Roberto Lima', phone: '(11) 99822-1100', email: 'carlos.roberto@exemplo.com', plate: 'GCV-4560', pet: 'Gato (Félix)' },
-    { unitId: 'A-201', name: 'Juliana Vieira', phone: '(11) 97100-3344', email: 'juliana.vieira@exemplo.com', plate: 'ABC-1234', pet: 'Cão (Bobi)' },
-    { unitId: 'B-101', name: 'Ramiro Gonçalves', phone: '(11) 96211-5500', email: 'ramiro@exemplo.com', plate: 'XYZ-9081', pet: 'Cão (Luna)' },
-    { unitId: 'B-202', name: 'Mariana Castilho', phone: '(11) 98233-4455', email: 'mari.castilho@exemplo.com', plate: 'KLE-0922', pet: 'Nenhum' }
-  ]);
+  const [list, setList] = useState<Condomino[]>([]);
 
   const [showAdd, setShowAdd] = useState(false);
-  const [unitId, setUnitId] = useState('');
+  const [unitNumber, setUnitNumber] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [plate, setPlate] = useState('');
   const [pet, setPet] = useState('Nenhum');
+
+  useEffect(() => {
+    const fetchResidents = async () => {
+      try {
+        const response = await fetch(`/api/v1/condominiums/${condoId}/residents`);
+        if (response.ok) {
+          const data = await response.json();
+          const mapped = data.map((r: any) => ({
+            unitId: r.unit?.number || r.unitId,
+            name: r.person?.name || '',
+            phone: r.person?.phone || '',
+            email: r.person?.email || '',
+            plate: 'Sem veículo',
+            pet: 'Nenhum'
+          }));
+          setList(mapped);
+        }
+      } catch (error) {
+        console.error("Error fetching residents:", error);
+      }
+    };
+    fetchResidents();
+  }, [condoId]);
 
   const filtered = list.filter(c => {
     return c.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -34,28 +57,59 @@ export default function Condominos() {
            c.plate.toLowerCase().includes(search.toLowerCase());
   });
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!unitId.trim() || !name.trim()) {
+    if (!unitNumber.trim() || !name.trim()) {
       alert('Favor preencher a unidade e nome.');
       return;
     }
-    const newCond: Condomino = {
-      unitId,
-      name,
-      phone: phone || 'N/D',
-      email: email || 'N/D',
-      plate: plate || 'Sem veículo',
-      pet
-    };
-    setList([...list, newCond]);
-    setShowAdd(false);
-    setUnitId('');
-    setName('');
-    setPhone('');
-    setEmail('');
-    setPlate('');
-    setPet('Nenhum');
+
+    // Find the unit UUID by matching unit number
+    const matchedUnit = units.find(u => u.number === unitNumber.trim() || u.id === unitNumber.trim());
+    if (!matchedUnit) {
+      alert(`Unidade "${unitNumber}" não encontrada no cadastro.`);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/v1/condominiums/${condoId}/residents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          email: email || `${name.toLowerCase().replace(/\s+/g, '')}@example.com`,
+          phone: phone || 'N/D',
+          unitId: matchedUnit.id,
+          role: 'tenant'
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Erro ao cadastrar morador.');
+      }
+
+      const data = await response.json();
+      const newCond: Condomino = {
+        unitId: matchedUnit.number,
+        name: data.person?.name || name,
+        phone: data.person?.phone || phone || 'N/D',
+        email: data.person?.email || email || 'N/D',
+        plate: plate || 'Sem veículo',
+        pet
+      };
+
+      setList([...list, newCond]);
+      setShowAdd(false);
+      setUnitNumber('');
+      setName('');
+      setPhone('');
+      setEmail('');
+      setPlate('');
+      setPet('Nenhum');
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
   return (
@@ -138,10 +192,10 @@ export default function Condominos() {
                   <label className="text-zinc-400 block">Apartamento / Unidade</label>
                   <input 
                     type="text" 
-                    value={unitId} 
-                    onChange={(e) => setUnitId(e.target.value)}
+                    value={unitNumber} 
+                    onChange={(e) => setUnitNumber(e.target.value)}
                     placeholder="EX: A-101"
-                    className="w-full bg-[#0d0e12] border border-zinc-85c text-white rounded p-2 focus:outline-none"
+                    className="w-full bg-[#0d0e12] border border-zinc-800 text-white rounded p-2 focus:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -151,7 +205,7 @@ export default function Condominos() {
                     value={name} 
                     onChange={(e) => setName(e.target.value)}
                     placeholder="EX: João Silva Santos"
-                    className="w-full bg-[#0d0e12] border border-zinc-85c text-white rounded p-2 focus:outline-none"
+                    className="w-full bg-[#0d0e12] border border-zinc-800 text-white rounded p-2 focus:outline-none"
                   />
                 </div>
               </div>
@@ -164,7 +218,7 @@ export default function Condominos() {
                     value={phone} 
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="(11) 90000-0000"
-                    className="w-full bg-[#0d0e12] border border-zinc-85c text-white rounded p-2 focus:outline-none"
+                    className="w-full bg-[#0d0e12] border border-zinc-800 text-white rounded p-2 focus:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -174,7 +228,7 @@ export default function Condominos() {
                     value={email} 
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="EX: joao@gmail.com"
-                    className="w-full bg-[#0d0e12] border border-zinc-85c text-white rounded p-2"
+                    className="w-full bg-[#0d0e12] border border-zinc-800 text-white rounded p-2"
                   />
                 </div>
               </div>
@@ -187,7 +241,7 @@ export default function Condominos() {
                     value={plate} 
                     onChange={(e) => setPlate(e.target.value)}
                     placeholder="EX: ABC-1234"
-                    className="w-full bg-[#0d0e12] border border-zinc-85c text-white rounded p-2"
+                    className="w-full bg-[#0d0e12] border border-zinc-800 text-white rounded p-2"
                   />
                 </div>
                 <div className="space-y-1">
@@ -197,7 +251,7 @@ export default function Condominos() {
                     value={pet} 
                     onChange={(e) => setPet(e.target.value)}
                     placeholder="Nenhum ou gato/cão"
-                    className="w-full bg-[#0d0e12] border border-zinc-85c text-white rounded p-2"
+                    className="w-full bg-[#0d0e12] border border-zinc-800 text-white rounded p-2"
                   />
                 </div>
               </div>

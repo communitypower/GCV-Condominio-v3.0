@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gcv-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: gcv_condominio
+      POSTGRES_USER: gcv_user
+      POSTGRES_PASSWORD: gcv_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gcv_user -d gcv_condominio"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: gcv-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash}
+      - ENABLE_GITHUB_INTEGRATION=${ENABLE_GITHUB_INTEGRATION:-false}
+      - DATABASE_URL=postgresql://gcv_user:gcv_password@db:5432/gcv_condominio?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

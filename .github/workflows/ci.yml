@@ -1,0 +1,129 @@
+name: GCV SaaS CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-test:
+    name: Build & Run Local Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Build application
+        run: npm run build
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Google Auth (OIDC / WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCP
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build and Push Staging Container
+        run: |
+          IMAGE_URI="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-staging/gcv-app:${{ github.sha }}"
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
+          
+          # Tag as latest for staging
+          docker tag $IMAGE_URI "us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-staging/gcv-app:latest"
+          docker push "us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-staging/gcv-app:latest"
+
+      - name: Deploy to Cloud Run (Staging)
+        run: |
+          gcloud run deploy gcv-app-staging \
+            --image="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-staging/gcv-app:${{ github.sha }}" \
+            --region=us-central1 \
+            --platform=managed \
+            --quiet
+
+      - name: Run Staging Migrations
+        run: |
+          # In staging, run prisma migrate deploy to apply new migrations automatically
+          npx prisma migrate deploy
+
+  deploy-production:
+    name: Deploy to Production
+    needs: deploy-staging
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Enforces GitHub environment protection rules (manual approvals)
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Google Auth (OIDC / WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCP
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Promote and Tag Production Container
+        run: |
+          # Pull the verified image from staging and push to production Artifact Registry
+          SRC_IMAGE="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-staging/gcv-app:${{ github.sha }}"
+          PROD_IMAGE="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-production/gcv-app:${{ github.ref_name }}"
+          
+          docker pull $SRC_IMAGE
+          docker tag $SRC_IMAGE $PROD_IMAGE
+          docker tag $SRC_IMAGE "us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-production/gcv-app:latest"
+          
+          docker push $PROD_IMAGE
+          docker push "us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-production/gcv-app:latest"
+
+      - name: Deploy to Cloud Run (Production)
+        run: |
+          gcloud run deploy gcv-app-production \
+            --image="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gcv-condominio-repo-production/gcv-app:${{ github.ref_name }}" \
+            --region=us-central1 \
+            --platform=managed \
+            --quiet

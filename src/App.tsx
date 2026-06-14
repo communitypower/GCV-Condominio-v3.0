@@ -66,7 +66,10 @@ interface LoggedInUser {
   role: 'admin' | 'staff' | 'resident';
   avatar: string;
   description: string;
+  email: string;
   unitId?: string;
+  accountId?: string;
+  memberships?: any[];
 }
 
 const PRESET_USERS: LoggedInUser[] = [
@@ -75,18 +78,21 @@ const PRESET_USERS: LoggedInUser[] = [
     role: 'admin',
     avatar: 'CM',
     description: 'Síndico Geral / Profissional',
+    email: 'sindico@gcv.com.br'
   },
   {
     name: 'Geraldo Nascimento',
     role: 'staff',
     avatar: 'GN',
     description: 'Zelador Predial Residente',
+    email: 'zelador@gcv.com.br'
   },
   {
     name: 'Carlos Eduardo Ramos',
     role: 'resident',
     avatar: 'CR',
     description: 'Morador - A-101',
+    email: 'carlos.ramos@email.com',
     unitId: 'A-101'
   }
 ];
@@ -171,205 +177,213 @@ export default function App() {
   const [currentMonth, setCurrentMonth] = useState('2026-05'); // Current active month simulation
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'info'} | null>(null);
 
+  // Load user session on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/v1/auth/me');
+        if (response.ok) {
+          const data = await response.json();
+          const matchedPreset = PRESET_USERS.find(pu => pu.email === data.user.email);
+          if (matchedPreset) {
+            setUser({
+              ...matchedPreset,
+              accountId: data.user.memberships?.[0]?.accountId,
+              memberships: data.user.memberships
+            });
+          } else {
+            setUser({
+              name: data.user.name,
+              email: data.user.email,
+              role: data.user.memberships[0]?.role === 'syndic' ? 'admin' : data.user.memberships[0]?.role === 'manager' ? 'staff' : 'resident',
+              avatar: data.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
+              description: data.user.memberships[0]?.role || 'Morador',
+              accountId: data.user.memberships?.[0]?.accountId,
+              memberships: data.user.memberships
+            });
+          }
+        } else {
+          setUser(null);
+          localStorage.removeItem('gcv_logged_user');
+        }
+      } catch (error) {
+        console.error("Error loading session:", error);
+      }
+    };
+    checkSession();
+  }, []);
+
+  // Fetch condominiums list when user is authenticated
+  useEffect(() => {
+    if (!user) return;
+    const fetchCondos = async () => {
+      try {
+        const response = await fetch('/api/v1/condominiums');
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            const mapped = data.map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              address: c.address,
+              avatar: '🏢',
+              createdAt: c.createdAt
+            }));
+            setEdificios(mapped);
+            if (!mapped.some((e: any) => e.id === activeEdificioId)) {
+              setActiveEdificioId(mapped[0].id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching condominiums:", error);
+      }
+    };
+    fetchCondos();
+  }, [user]);
+
   // Load and auto-transition states whenever activeEdificioId changes!
   useEffect(() => {
+    if (!user || !activeEdificioId) return;
     localStorage.setItem('gcv_active_edificio_id', activeEdificioId);
 
-    // 1. Units load
-    const storedUnits = localStorage.getItem(`gcv_units_${activeEdificioId}`);
-    let loadedUnits = INITIAL_UNITS;
-    if (storedUnits) {
-      try { loadedUnits = JSON.parse(storedUnits); } catch (e) {}
-    } else {
-      if (activeEdificioId !== 'bela_vista') {
-        loadedUnits = [
-          { id: '101', block: 'Torre A', number: '101', ownerName: 'Gisela Santos Araújo', ownerEmail: 'gisela@email.com', ownerPhone: '(11) 91234-5678', type: 'apartment', status: 'occupied', fractionalShare: 0.1 },
-          { id: '102', block: 'Torre A', number: '102', ownerName: 'Fábio de Souza Junior', ownerEmail: 'fabio.jr@email.com', ownerPhone: '(11) 92345-6789', type: 'apartment', status: 'vacant', fractionalShare: 0.1 },
-          { id: '201', block: 'Torre B', number: '201', ownerName: 'Clara Medeiros', ownerEmail: 'clara.m@email.com', ownerPhone: '(11) 93456-7890', type: 'penthouse', status: 'maintenance', fractionalShare: 0.2 }
-        ];
-      } else {
-        loadedUnits = INITIAL_UNITS;
-      }
-    }
-    setUnits(loadedUnits);
+    const loadData = async () => {
+      try {
+        // 1. Units load
+        const unitsRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/units`);
+        if (unitsRes.ok) {
+          const loadedUnits = await unitsRes.json();
+          const mappedUnits = loadedUnits.map((u: any) => {
+            const ownerRel = u.relationships?.find((r: any) => r.role === 'owner');
+            return {
+              id: u.id,
+              block: u.building?.name || 'Bloco',
+              number: u.number,
+              ownerName: ownerRel?.person?.name || 'Sem proprietário',
+              ownerEmail: ownerRel?.person?.email || 'N/D',
+              ownerPhone: ownerRel?.person?.phone || 'N/D',
+              type: u.type,
+              status: u.status,
+              fractionalShare: u.fractionalShare
+            };
+          });
+          setUnits(mappedUnits);
+        }
 
-    // 2. Billings load
-    const storedBillings = localStorage.getItem(`gcv_billings_${activeEdificioId}`);
-    let loadedBillings = INITIAL_BILLINGS;
-    if (storedBillings) {
-      try { loadedBillings = JSON.parse(storedBillings); } catch (e) {}
-    } else {
-      if (activeEdificioId !== 'bela_vista') {
-        loadedBillings = [
-          {
-            id: 'BIL-202605-101',
-            unitId: '101',
-            monthString: '2026-05',
-            amount: 750.00,
-            dueDate: '2026-05-10',
-            status: 'paid',
-            paidAt: '2026-05-09',
-            issueDate: '2026-04-25',
-            barcode: '34191.79001 01043.513184 91020.150008 7 97130000075000',
-            pixQrCode: '00020101021226870014br.gov.bcb.pix...',
-            description: 'Taxa Condominial Ordinária - Maio 2026'
-          },
-          {
-            id: 'BIL-202605-102',
-            unitId: '102',
-            monthString: '2026-05',
-            amount: 750.00,
-            dueDate: '2026-05-10',
-            status: 'pending',
-            issueDate: '2026-04-25',
-            barcode: '34191.79001 01043.513184 91020.150008 7 97130000075050',
-            pixQrCode: '00020101021226870014br.gov.bcb.pix...',
-            description: 'Taxa Condominial Ordinária - Maio 2026'
+        // 2. Billings load
+        const chargesRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/charges`);
+        if (chargesRes.ok) {
+          const loadedCharges = await chargesRes.json();
+          const mappedBillings = loadedCharges.map((c: any) => ({
+            id: c.id,
+            unitId: c.unit?.number || 'Unidade',
+            monthString: new Date(c.dueDate).toISOString().substring(0, 7),
+            amount: c.amount,
+            dueDate: new Date(c.dueDate).toISOString().split('T')[0],
+            status: c.status,
+            paidAt: c.paidAt ? new Date(c.paidAt).toISOString().split('T')[0] : undefined,
+            issueDate: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : undefined,
+            barcode: c.barcode,
+            pixQrCode: c.pixQrCode,
+            description: c.description
+          }));
+          setBillings(mappedBillings);
+        }
+
+        // 3. Maintenance Requests load
+        const ticketsRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/tickets`);
+        if (ticketsRes.ok) {
+          const loadedTickets = await ticketsRes.json();
+          const mappedTickets = loadedTickets.map((t: any) => ({
+            id: t.id,
+            unitId: t.unitId || 'COMMON',
+            title: t.title,
+            description: t.description,
+            category: t.category,
+            priority: t.priority,
+            status: t.status,
+            reportedAt: t.reportedAt,
+            estimatedCost: t.estimatedCost,
+            actualCost: t.actualCost,
+            assignedStaff: t.assignedStaff,
+            logs: t.comments?.map((comm: any) => ({
+              id: comm.id,
+              author: comm.authorName,
+              comment: comm.comment,
+              text: comm.comment,
+              createdAt: comm.createdAt
+            })) || []
+          }));
+          setMaintenanceRequests(mappedTickets);
+        }
+
+        // 4. Equipments load
+        const eqRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/equipment`);
+        if (eqRes.ok) {
+          const loadedEq = await eqRes.json();
+          setEquipments(loadedEq);
+        }
+
+        // 5. Plans load
+        const plansRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/plans`);
+        if (plansRes.ok) {
+          const loadedPlans = await plansRes.json();
+          setPlans(loadedPlans);
+        }
+
+        // 6. Logs load
+        const accountId = user.accountId || user.memberships?.[0]?.accountId;
+        if (accountId) {
+          const auditRes = await fetch(`/api/v1/accounts/${accountId}/audit`);
+          if (auditRes.ok) {
+            const loadedLogs = await auditRes.json();
+            const mappedLogs = loadedLogs.map((l: any) => {
+              let category: 'tech' | 'admin' | 'security' = 'admin';
+              if (['MaintenanceTicket', 'Equipment', 'MaintenancePlan'].includes(l.entity)) {
+                category = 'tech';
+              } else if (['User', 'Membership', 'Condominium', 'Building', 'Unit'].includes(l.entity)) {
+                category = 'admin';
+              } else {
+                category = 'security';
+              }
+              return {
+                id: l.id,
+                title: `${l.action.toUpperCase()} - ${l.entity}`,
+                content: l.details,
+                author: l.userEmail || 'System',
+                createdAt: l.createdAt,
+                type: category
+              };
+            });
+            setLogs(mappedLogs);
           }
-        ];
-      } else {
-        loadedBillings = INITIAL_BILLINGS;
+        }
+      } catch (error) {
+        console.error("Error loading data from API:", error);
       }
-    }
+    };
+    loadData();
 
-    // 3. Maintenance Requests load
-    const storedMaintenance = localStorage.getItem(`gcv_maintenance_${activeEdificioId}`);
-    let loadedMaintenance = INITIAL_MAINTENANCE;
-    if (storedMaintenance) {
-      try { loadedMaintenance = JSON.parse(storedMaintenance); } catch (e) {}
-    } else {
-      if (activeEdificioId !== 'bela_vista') {
-        loadedMaintenance = [
-          {
-            id: 'MNT-001',
-            unitId: 'COMMON',
-            title: 'Reparo de Portão Eletrônico',
-            description: 'Ajuste de sensor fim de curso do motor pivotante.',
-            category: 'security',
-            priority: 'high',
-            status: 'reported',
-            reportedAt: '2026-05-24T10:00:00Z',
-            estimatedCost: 250.00,
-            logs: []
-          }
-        ];
-      } else {
-        loadedMaintenance = INITIAL_MAINTENANCE;
-      }
-    }
-
-    // 4. Equipments load
-    const storedEquipments = localStorage.getItem(`gcv_equipments_${activeEdificioId}`);
-    let loadedEquipments = INITIAL_EQUIPMENTS;
-    if (storedEquipments) {
-      try { loadedEquipments = JSON.parse(storedEquipments); } catch (e) {}
-    } else {
-      if (activeEdificioId !== 'bela_vista') {
-        loadedEquipments = [
-          { id: 'EQP-01', name: 'Motor Portão Social', location: 'Entrada Guarita', category: 'Segurança', status: 'operational', lastInspection: '2026-05-10', nextInspection: '2026-06-10', installDate: '2024-01-10' },
-          { id: 'EQP-02', name: 'Bomba de Recalque Hidráulica', location: 'Subsolo', category: 'Hidráulica', status: 'alert', lastInspection: '2026-04-10', nextInspection: '2026-06-10', installDate: '2023-01-15' }
-        ];
-      } else {
-        loadedEquipments = INITIAL_EQUIPMENTS;
-      }
-    }
-    setEquipments(loadedEquipments);
-
-    // 5. Plans load
-    const storedPlans = localStorage.getItem(`gcv_plans_${activeEdificioId}`);
-    let loadedPlans = INITIAL_PLANS;
-    if (storedPlans) {
-      try { loadedPlans = JSON.parse(storedPlans); } catch (e) {}
-    } else {
-      if (activeEdificioId !== 'bela_vista') {
-        loadedPlans = [
-          { id: 'PLN-01', title: 'Inspeção Hidráulica Mensal', description: 'Buscar vazamentos nos barramentos de teto e ralos.', frequency: 'monthly', nextOccurrence: '2026-06-15', status: 'active' }
-        ];
-      } else {
-        loadedPlans = INITIAL_PLANS;
-      }
-    }
-    setPlans(loadedPlans);
-
-    // 6. Logs load
-    const storedLogs = localStorage.getItem(`gcv_logs_${activeEdificioId}`);
-    let loadedLogs = INITIAL_LOGS;
-    if (storedLogs) {
-      try { loadedLogs = JSON.parse(storedLogs); } catch (e) {}
-    } else {
-      if (activeEdificioId !== 'bela_vista') {
-        loadedLogs = [
-          { id: 'LOG-01', title: 'Inicialização do Acompanhamento', content: 'Início das coletas de manutenção para esta nova filial.', author: 'Zelador', createdAt: '2026-05-26T08:00:00Z', type: 'admin' }
-        ];
-      } else {
-        loadedLogs = INITIAL_LOGS;
-      }
-    }
-    setLogs(loadedLogs);
-
-    // 7. Purchases load
+    // 7. Purchases load (Local state only)
     const storedPurchases = localStorage.getItem(`gcv_purchases_${activeEdificioId}`);
     let loadedPurchases = INITIAL_PURCHASES;
     if (storedPurchases) {
       try { loadedPurchases = JSON.parse(storedPurchases); } catch (e) {}
     } else {
-      if (activeEdificioId !== 'bela_vista') {
-        loadedPurchases = [];
-      } else {
-        loadedPurchases = INITIAL_PURCHASES;
-      }
+      loadedPurchases = [];
     }
     setPurchases(loadedPurchases);
 
-    // 8. Payments load
+    // 8. Payments load (Local state only)
     const storedPayments = localStorage.getItem(`gcv_payments_${activeEdificioId}`);
     let loadedPayments = INITIAL_PAYMENTS;
     if (storedPayments) {
       try { loadedPayments = JSON.parse(storedPayments); } catch (e) {}
     } else {
-      if (activeEdificioId !== 'bela_vista') {
-        loadedPayments = [];
-      } else {
-        loadedPayments = INITIAL_PAYMENTS;
-      }
+      loadedPayments = [];
     }
-
-    const simToday = '2026-05-26'; // Simulated current date based on prompt's date
-    const autoCheckedBillings = loadedBillings.map(bil => {
-      if (bil.status === 'pending' && bil.dueDate < simToday) {
-        const penaltyFee = parseFloat((bil.amount * 0.02).toFixed(2)); // 2% penalty fee
-        const interestFee = parseFloat((bil.amount * 0.01).toFixed(2)); // 1% simulated interest fee
-        return {
-          ...bil,
-          status: 'overdue' as const,
-          penaltyFee,
-          interestFee,
-        };
-      }
-      return bil;
-    });
-
-    const autoCheckedPayments = loadedPayments.map(p => {
-      if (p.status === 'pending' && p.dueDate < simToday) {
-        return { ...p, status: 'overdue' as const };
-      }
-      return p;
-    });
-
-    setBillings(autoCheckedBillings);
-    setMaintenanceRequests(loadedMaintenance);
-    setPayments(autoCheckedPayments);
-
-    // Direct writes back to localStorage for sync
-    localStorage.setItem(`gcv_units_${activeEdificioId}`, JSON.stringify(loadedUnits));
-    localStorage.setItem(`gcv_billings_${activeEdificioId}`, JSON.stringify(autoCheckedBillings));
-    localStorage.setItem(`gcv_maintenance_${activeEdificioId}`, JSON.stringify(loadedMaintenance));
-    localStorage.setItem(`gcv_equipments_${activeEdificioId}`, JSON.stringify(loadedEquipments));
-    localStorage.setItem(`gcv_plans_${activeEdificioId}`, JSON.stringify(loadedPlans));
-    localStorage.setItem(`gcv_logs_${activeEdificioId}`, JSON.stringify(loadedLogs));
-    localStorage.setItem(`gcv_purchases_${activeEdificioId}`, JSON.stringify(loadedPurchases));
-    localStorage.setItem(`gcv_payments_${activeEdificioId}`, JSON.stringify(autoCheckedPayments));
-  }, [activeEdificioId]);
+    setPayments(loadedPayments);
+  }, [activeEdificioId, user]);
 
   // Write handlers and dispatchers back to storage
   const saveUnitsToStorage = (updatedList: Unit[]) => {
@@ -423,144 +437,550 @@ export default function App() {
   // Operational Updates handlers
   
   // Units Updating (Save owner, fractional changes)
-  const handleUpdateUnit = (updatedUnit: Unit) => {
-    const updated = units.map(u => u.id === updatedUnit.id ? updatedUnit : u);
-    saveUnitsToStorage(updated);
-    triggerNotification(`Cadastro da unidade ${updatedUnit.id} atualizado com sucesso!`);
+  const handleUpdateUnit = async (updatedUnit: Unit) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/units/${updatedUnit.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: updatedUnit.status,
+          type: updatedUnit.type,
+          fractionalShare: updatedUnit.fractionalShare,
+          ownerName: updatedUnit.ownerName,
+          ownerEmail: updatedUnit.ownerEmail,
+          ownerPhone: updatedUnit.ownerPhone,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Erro ao atualizar unidade.');
+      }
+
+      // Reload units list
+      const reloadRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/units`);
+      if (reloadRes.ok) {
+        const loadedUnits = await reloadRes.json();
+        const mappedUnits = loadedUnits.map((u: any) => {
+          const ownerRel = u.relationships?.find((r: any) => r.role === 'owner');
+          return {
+            id: u.id,
+            block: u.building?.name || 'Bloco',
+            number: u.number,
+            ownerName: ownerRel?.person?.name || 'Sem proprietário',
+            ownerEmail: ownerRel?.person?.email || 'N/D',
+            ownerPhone: ownerRel?.person?.phone || 'N/D',
+            type: u.type,
+            status: u.status,
+            fractionalShare: u.fractionalShare
+          };
+        });
+        setUnits(mappedUnits);
+      }
+      triggerNotification(`Cadastro da unidade ${updatedUnit.number} atualizado com sucesso!`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
-  const handleAddUnit = (newUnit: Unit) => {
-    if (units.some(u => u.id === newUnit.id)) {
-      alert(`Unidade ${newUnit.id} já existe no cadastro.`);
-      return;
+  const handleAddUnit = async (newUnit: Unit) => {
+    try {
+      // 1. Get buildings list for activeEdificioId
+      const bRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/buildings`);
+      if (!bRes.ok) throw new Error('Erro ao buscar edifícios.');
+      let buildings = await bRes.json();
+
+      // 2. If no building exists, create one
+      let buildingId = '';
+      const blockName = newUnit.block || 'Bloco Principal';
+      const existingBuilding = buildings.find((b: any) => b.name === blockName);
+      if (existingBuilding) {
+        buildingId = existingBuilding.id;
+      } else {
+        const createBRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/buildings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: blockName }),
+        });
+        if (!createBRes.ok) throw new Error('Erro ao criar edifício.');
+        const newB = await createBRes.json();
+        buildingId = newB.id;
+      }
+
+      // 3. Create Unit
+      const unitRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/units`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: newUnit.number,
+          type: newUnit.type,
+          status: newUnit.status,
+          fractionalShare: newUnit.fractionalShare,
+          buildingId,
+        }),
+      });
+
+      if (!unitRes.ok) {
+        const err = await unitRes.json();
+        throw new Error(err.error || 'Erro ao criar unidade.');
+      }
+
+      const createdUnit = await unitRes.json();
+
+      // 4. Create Owner relationship if ownerName is provided
+      if (newUnit.ownerName) {
+        await fetch(`/api/v1/condominiums/${activeEdificioId}/residents`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newUnit.ownerName,
+            email: newUnit.ownerEmail || `${newUnit.ownerName.toLowerCase().replace(/\s+/g, '')}@example.com`,
+            phone: newUnit.ownerPhone || 'N/D',
+            unitId: createdUnit.id,
+            role: 'owner',
+          }),
+        });
+      }
+
+      // Reload units list
+      const reloadRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/units`);
+      if (reloadRes.ok) {
+        const loadedUnits = await reloadRes.json();
+        const mappedUnits = loadedUnits.map((u: any) => {
+          const ownerRel = u.relationships?.find((r: any) => r.role === 'owner');
+          return {
+            id: u.id,
+            block: u.building?.name || 'Bloco',
+            number: u.number,
+            ownerName: ownerRel?.person?.name || 'Sem proprietário',
+            ownerEmail: ownerRel?.person?.email || 'N/D',
+            ownerPhone: ownerRel?.person?.phone || 'N/D',
+            type: u.type,
+            status: u.status,
+            fractionalShare: u.fractionalShare
+          };
+        });
+        setUnits(mappedUnits);
+      }
+      triggerNotification(`Nova unidade ${newUnit.number} cadastrada com sucesso!`);
+    } catch (error: any) {
+      alert(error.message);
     }
-    const updated = [...units, newUnit];
-    saveUnitsToStorage(updated);
-    triggerNotification(`Nova unidade ${newUnit.id} cadastrada com sucesso!`);
   };
 
   // Billings Updating (Register payment/quittance)
-  const handlePayBilling = (billingId: string, paidDateStr: string) => {
-    const updated = billings.map(b => {
-      if (b.id === billingId) {
-        return {
-          ...b,
-          status: 'paid' as const,
-          paidAt: paidDateStr,
-        };
+  const handlePayBilling = async (billingId: string, paidDateStr: string) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/charges/${billingId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'paid' }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao baixar boleto.');
       }
-      return b;
-    });
-    saveBillingsToStorage(updated);
-    triggerNotification(`Boleto ${billingId.replace('BIL-', '')} quitado em ${new Date(paidDateStr + 'T12:00:00').toLocaleDateString('pt-BR')}!`);
+
+      // Reload billings
+      const chargesRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/charges`);
+      if (chargesRes.ok) {
+        const loadedCharges = await chargesRes.json();
+        const mappedBillings = loadedCharges.map((c: any) => ({
+          id: c.id,
+          unitId: c.unit?.number || 'Unidade',
+          monthString: new Date(c.dueDate).toISOString().substring(0, 7),
+          amount: c.amount,
+          dueDate: new Date(c.dueDate).toISOString().split('T')[0],
+          status: c.status,
+          paidAt: c.paidAt ? new Date(c.paidAt).toISOString().split('T')[0] : undefined,
+          issueDate: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : undefined,
+          barcode: c.barcode,
+          pixQrCode: c.pixQrCode,
+          description: c.description
+        }));
+        setBillings(mappedBillings);
+      }
+      triggerNotification(`Boleto ${billingId.replace('BIL-', '')} quitado em ${new Date(paidDateStr + 'T12:00:00').toLocaleDateString('pt-BR')}!`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
-  const handleAddBilling = (newBilling: Billing) => {
-    const updated = [newBilling, ...billings];
-    saveBillingsToStorage(updated);
-    triggerNotification(`Boleto cadastrado com sucesso para unidade ${newBilling.unitId}!`);
+  const handleAddBilling = async (newBilling: Billing) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/charges`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          unitId: newBilling.unitId,
+          monthString: newBilling.monthString,
+          amount: newBilling.amount,
+          dueDate: newBilling.dueDate,
+          description: newBilling.description,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Erro ao criar cobrança.');
+      }
+
+      // Reload billings
+      const chargesRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/charges`);
+      if (chargesRes.ok) {
+        const loadedCharges = await chargesRes.json();
+        const mappedBillings = loadedCharges.map((c: any) => ({
+          id: c.id,
+          unitId: c.unit?.number || 'Unidade',
+          monthString: new Date(c.dueDate).toISOString().substring(0, 7),
+          amount: c.amount,
+          dueDate: new Date(c.dueDate).toISOString().split('T')[0],
+          status: c.status,
+          paidAt: c.paidAt ? new Date(c.paidAt).toISOString().split('T')[0] : undefined,
+          issueDate: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : undefined,
+          barcode: c.barcode,
+          pixQrCode: c.pixQrCode,
+          description: c.description
+        }));
+        setBillings(mappedBillings);
+      }
+      triggerNotification(`Boleto cadastrado com sucesso para unidade ${newBilling.unitId}!`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
   // Mass recurring invoicing for a month
-  const handleMassGenerateBilling = (month: string) => {
-    const occupiedUnits = units.filter(u => u.status === 'occupied' || u.status === 'maintenance');
-    const existingBillingsOfThisMonth = billings.filter(b => b.monthString === month);
+  const handleMassGenerateBilling = async (month: string) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/charges/mass-generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ monthString: month }),
+      });
 
-    let countGenerated = 0;
-    const generatedBillings: Billing[] = [...billings];
-
-    occupiedUnits.forEach(u => {
-      const hasBill = existingBillingsOfThisMonth.some(b => b.unitId === u.id);
-      if (!hasBill) {
-        let standardAmount = 650.00;
-        let desc = 'Taxa Condominial Ordinária';
-        if (u.type === 'penthouse') {
-          standardAmount = 1200.00;
-          desc = 'Taxa Condominial Ordinária - Cobertura';
-        } else if (u.type === 'house') {
-          standardAmount = 850.00;
-          desc = 'Taxa Condominial Ordinária - Residência';
-        }
-
-        const newBill: Billing = {
-          id: `BIL-${month.replace('-', '')}-${u.id}`,
-          unitId: u.id,
-          monthString: month,
-          amount: standardAmount,
-          dueDate: `${month}-10`,
-          status: 'pending',
-          issueDate: `${month === '2026-06' ? '2026-05-25' : '2026-04-25'}`,
-          barcode: '34191.79001 01043.513184 91020.150008 7 97130000' + Math.floor(standardAmount * 100).toString().padStart(6, '0'),
-          pixQrCode: `00020101021226870014br.gov.bcb.pix2565pix-qr.gcvcondominio.com.br/cob/BIL${month.replace('-', '')}${u.id}520400005303986540${standardAmount.toFixed(2)}5802BR5914GCVCONDOMINIO6009SAOPAULO62070503BIL${month.replace('-', '')}${u.id}`,
-          description: desc,
-        };
-
-        generatedBillings.unshift(newBill);
-        countGenerated++;
+      if (!response.ok) {
+        throw new Error('Erro ao gerar faturamento em massa.');
       }
-    });
 
-    if (countGenerated > 0) {
-      saveBillingsToStorage(generatedBillings);
-      triggerNotification(`Faturamento executado! ${countGenerated} novos boletos adicionados.`);
-    } else {
-      triggerNotification(`Todos os boletos ativos para o mês de ${month} já foram gerados previamente.`, 'info');
+      const result = await response.json();
+
+      // Reload billings
+      const chargesRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/charges`);
+      if (chargesRes.ok) {
+        const loadedCharges = await chargesRes.json();
+        const mappedBillings = loadedCharges.map((c: any) => ({
+          id: c.id,
+          unitId: c.unit?.number || 'Unidade',
+          monthString: new Date(c.dueDate).toISOString().substring(0, 7),
+          amount: c.amount,
+          dueDate: new Date(c.dueDate).toISOString().split('T')[0],
+          status: c.status,
+          paidAt: c.paidAt ? new Date(c.paidAt).toISOString().split('T')[0] : undefined,
+          issueDate: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : undefined,
+          barcode: c.barcode,
+          pixQrCode: c.pixQrCode,
+          description: c.description
+        }));
+        setBillings(mappedBillings);
+      }
+
+      if (result.countGenerated > 0) {
+        triggerNotification(`Faturamento executado! ${result.countGenerated} novos boletos adicionados.`);
+      } else {
+        triggerNotification(`Todos os boletos ativos para o mês de ${month} já foram gerados previamente.`, 'info');
+      }
+    } catch (error: any) {
+      alert(error.message);
     }
   };
 
   // Maintenance Ticket handlers
-  const handleAddMaintenanceRequest = (newReq: MaintenanceRequest) => {
-    const updated = [newReq, ...maintenanceRequests];
-    saveMaintenanceToStorage(updated);
-    triggerNotification(`Chamado de manutenção ${newReq.id} aberto com sucesso!`);
+  const handleAddMaintenanceRequest = async (newReq: MaintenanceRequest) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/tickets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newReq.title,
+          description: newReq.description,
+          category: newReq.category,
+          priority: newReq.priority,
+          unitId: newReq.unitId === 'COMMON' ? null : newReq.unitId,
+          estimatedCost: newReq.estimatedCost,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Erro ao criar chamado de manutenção.');
+      }
+      const data = await response.json();
+      
+      const createdTicket = {
+        id: data.id,
+        unitId: data.unitId || 'COMMON',
+        title: data.title,
+        description: data.description,
+        category: data.category,
+        priority: data.priority,
+        status: data.status,
+        reportedAt: data.reportedAt,
+        estimatedCost: data.estimatedCost,
+        logs: []
+      };
+      setMaintenanceRequests([createdTicket, ...maintenanceRequests]);
+      triggerNotification(`Chamado de manutenção ${data.id} aberto com sucesso!`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
-  const handleUpdateMaintenanceRequest = (updatedReq: MaintenanceRequest) => {
-    const updated = maintenanceRequests.map(r => r.id === updatedReq.id ? updatedReq : r);
-    saveMaintenanceToStorage(updated);
-    triggerNotification(`Chamado ${updatedReq.id} atualizado com sucesso.`);
+  const handleUpdateMaintenanceRequest = async (updatedReq: MaintenanceRequest) => {
+    try {
+      const originalReq = maintenanceRequests.find(r => r.id === updatedReq.id);
+      if (!originalReq) return;
+
+      if (updatedReq.logs.length > originalReq.logs.length) {
+        const newComm = updatedReq.logs[updatedReq.logs.length - 1];
+        const resComment = await fetch(`/api/v1/condominiums/${activeEdificioId}/tickets/${updatedReq.id}/comments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ comment: newComm.comment }),
+        });
+        if (!resComment.ok) {
+          throw new Error('Erro ao adicionar comentário.');
+        }
+      }
+
+      const resDetails = await fetch(`/api/v1/condominiums/${activeEdificioId}/tickets/${updatedReq.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: updatedReq.status,
+          assignedStaff: updatedReq.assignedStaff,
+          estimatedCost: updatedReq.estimatedCost,
+          actualCost: updatedReq.actualCost,
+        }),
+      });
+      if (!resDetails.ok) {
+        throw new Error('Erro ao atualizar detalhes do chamado.');
+      }
+
+      // Reload tickets list
+      const ticketsRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/tickets`);
+      if (ticketsRes.ok) {
+        const loadedTickets = await ticketsRes.json();
+        const mappedTickets = loadedTickets.map((t: any) => ({
+          id: t.id,
+          unitId: t.unitId || 'COMMON',
+          title: t.title,
+          description: t.description,
+          category: t.category,
+          priority: t.priority,
+          status: t.status,
+          reportedAt: t.reportedAt,
+          estimatedCost: t.estimatedCost,
+          actualCost: t.actualCost,
+          assignedStaff: t.assignedStaff,
+          logs: t.comments?.map((comm: any) => ({
+            id: comm.id,
+            author: comm.authorName,
+            comment: comm.comment,
+            text: comm.comment,
+            createdAt: comm.createdAt
+          })) || []
+        }));
+        setMaintenanceRequests(mappedTickets);
+      }
+      triggerNotification(`Chamado ${updatedReq.id} atualizado com sucesso.`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
   // State Management Dispatches for newly created views
-  const handleAddEquipment = (newEq: Equipment) => {
-    const updated = [...equipments, newEq];
-    saveEquipmentsToStorage(updated);
-    triggerNotification(`Equipamento ${newEq.id} registrado com sucesso!`);
-  };
+  const handleAddEquipment = async (newEq: Equipment) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/equipment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newEq.name,
+          location: newEq.location,
+          category: newEq.category,
+          status: newEq.status,
+          lastInspection: newEq.lastInspection,
+          nextInspection: newEq.nextInspection,
+          installDate: newEq.installDate,
+        }),
+      });
 
-  const handleUpdateEquipment = (updatedEq: Equipment) => {
-    const updated = equipments.map(e => e.id === updatedEq.id ? updatedEq : e);
-    saveEquipmentsToStorage(updated);
-    triggerNotification(`Ativo ${updatedEq.id} re-parametrizado com sucesso!`);
-  };
-
-  const handleAddPlan = (newPlan: MaintenancePlan) => {
-    const updated = [...plans, newPlan];
-    savePlansToStorage(updated);
-    triggerNotification(`Plano preventivo ${newPlan.id} agendado no calendário.`);
-  };
-
-  const handleTogglePlanStatus = (id: string) => {
-    const updated = plans.map(p => {
-      if (p.id === id) {
-        return { ...p, status: p.status === 'active' ? 'suspended' as const : 'active' as const };
+      if (!response.ok) {
+        throw new Error('Erro ao cadastrar equipamento.');
       }
-      return p;
-    });
-    savePlansToStorage(updated);
-    triggerNotification('Status do contrato de plano modificado.');
+
+      const eqRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/equipment`);
+      if (eqRes.ok) {
+        const loadedEq = await eqRes.json();
+        setEquipments(loadedEq);
+      }
+      triggerNotification(`Equipamento ${newEq.name} registrado com sucesso!`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
-  const handleDeletePlan = (id: string) => {
-    const updated = plans.filter(p => p.id !== id);
-    savePlansToStorage(updated);
-    triggerNotification('Plano removido com sucesso.');
+  const handleUpdateEquipment = async (updatedEq: Equipment) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/equipment/${updatedEq.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: updatedEq.name,
+          location: updatedEq.location,
+          category: updatedEq.category,
+          status: updatedEq.status,
+          lastInspection: updatedEq.lastInspection,
+          nextInspection: updatedEq.nextInspection,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao atualizar equipamento.');
+      }
+
+      const eqRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/equipment`);
+      if (eqRes.ok) {
+        const loadedEq = await eqRes.json();
+        setEquipments(loadedEq);
+      }
+      triggerNotification(`Ativo ${updatedEq.name} re-parametrizado com sucesso!`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
-  const handleAddLog = (newLog: OperationLog) => {
-    const updated = [newLog, ...logs];
-    saveLogsToStorage(updated);
-    triggerNotification(`Ocorrência ${newLog.id} adicionada com sucesso!`);
+  const handleAddPlan = async (newPlan: MaintenancePlan) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/plans`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          equipmentId: newPlan.equipmentId,
+          title: newPlan.title,
+          description: newPlan.description,
+          frequency: newPlan.frequency,
+          nextOccurrence: newPlan.nextOccurrence,
+          status: newPlan.status,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao cadastrar plano.');
+      }
+
+      const plansRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/plans`);
+      if (plansRes.ok) {
+        const loadedPlans = await plansRes.json();
+        setPlans(loadedPlans);
+      }
+      triggerNotification(`Plano preventivo ${newPlan.title} agendado no calendário.`);
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
+
+  const handleTogglePlanStatus = async (id: string) => {
+    try {
+      const plan = plans.find(p => p.id === id);
+      if (!plan) return;
+      const newStatus = plan.status === 'active' ? 'suspended' : 'active';
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/plans/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao alternar status do plano.');
+      }
+
+      const plansRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/plans`);
+      if (plansRes.ok) {
+        const loadedPlans = await plansRes.json();
+        setPlans(loadedPlans);
+      }
+      triggerNotification('Status do contrato de plano modificado.');
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
+
+  const handleDeletePlan = async (id: string) => {
+    try {
+      const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/plans/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao remover plano.');
+      }
+
+      const plansRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/plans`);
+      if (plansRes.ok) {
+        const loadedPlans = await plansRes.json();
+        setPlans(loadedPlans);
+      }
+      triggerNotification('Plano removido com sucesso.');
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
+
+  const handleAddLog = async (newLog: OperationLog) => {
+    try {
+      const accountId = user.accountId || user.memberships?.[0]?.accountId;
+      if (!accountId) throw new Error('Conta não identificada.');
+      const response = await fetch(`/api/v1/accounts/${accountId}/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newLog.title,
+          content: newLog.content,
+          type: newLog.type,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao registrar entrada de log.');
+      }
+
+      const auditRes = await fetch(`/api/v1/accounts/${accountId}/audit`);
+      if (auditRes.ok) {
+        const loadedLogs = await auditRes.json();
+        const mappedLogs = loadedLogs.map((l: any) => {
+          let category: 'tech' | 'admin' | 'security' = 'admin';
+          if (['MaintenanceTicket', 'Equipment', 'MaintenancePlan'].includes(l.entity)) {
+            category = 'tech';
+          } else if (['User', 'Membership', 'Condominium', 'Building', 'Unit'].includes(l.entity)) {
+            category = 'admin';
+          } else {
+            category = 'security';
+          }
+          return {
+            id: l.id,
+            title: `${l.action.toUpperCase()} - ${l.entity}`,
+            content: l.details,
+            author: l.userEmail || 'System',
+            createdAt: l.createdAt,
+            type: category
+          };
+        });
+        setLogs(mappedLogs);
+      }
+      triggerNotification(`Ocorrência registrada com sucesso!`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
   const handleApprovePurchase = (id: string) => {
@@ -609,14 +1029,37 @@ export default function App() {
   };
 
   // Authentication handlers
-  const handleLogin = (selectedUser: LoggedInUser) => {
-    setUser(selectedUser);
-    localStorage.setItem('gcv_logged_user', JSON.stringify(selectedUser));
-    setActiveTab('dashboard');
-    triggerNotification(`Acesso autorizado! Bem-vindo(a), ${selectedUser.name}!`);
+  const handleLogin = async (selectedUser: LoggedInUser) => {
+    try {
+      const response = await fetch('/api/v1/auth/mock-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: selectedUser.email }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao realizar login.');
+      }
+      const enrichedUser = {
+        ...selectedUser,
+        accountId: data.user.memberships?.[0]?.accountId,
+        memberships: data.user.memberships
+      };
+      setUser(enrichedUser);
+      localStorage.setItem('gcv_logged_user', JSON.stringify(enrichedUser));
+      setActiveTab('dashboard');
+      triggerNotification(`Acesso autorizado! Bem-vindo(a), ${selectedUser.name}!`);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/v1/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
     setUser(null);
     localStorage.removeItem('gcv_logged_user');
     triggerNotification('Sessão encerrada com sucesso.');
@@ -1230,7 +1673,7 @@ export default function App() {
           )}
 
           {activeTab === 'documentacao' && (
-            <Documentation />
+            <Documentation condoId={activeEdificioId} />
           )}
 
           {activeTab === 'bim' && (
@@ -1254,7 +1697,7 @@ export default function App() {
           )}
 
           {activeTab === 'condominos' && (
-            <Condominos />
+            <Condominos condoId={activeEdificioId} units={units} />
           )}
 
           {activeTab === 'cobrancas' && (
