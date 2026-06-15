@@ -32,6 +32,12 @@ variable "environment" {
   description = "The deployment environment name (e.g. staging, production)"
 }
 
+variable "container_image" {
+  type        = string
+  default     = "gcr.io/cloudrun/hello"
+  description = "The docker image to deploy to Cloud Run"
+}
+
 # --- ARTIFACT REGISTRY ---
 
 resource "google_artifact_registry_repository" "gcv_repo" {
@@ -186,7 +192,7 @@ resource "google_cloud_run_v2_service" "gcv_app" {
     }
 
     containers {
-      image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.gcv_repo.repository_id}/gcv-app:latest"
+      image = var.container_image
 
       ports {
         container_port = 3000
