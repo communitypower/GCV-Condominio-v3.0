@@ -289,7 +289,7 @@ app.get("/api/github/repos", checkGithubIntegration, async (req, res) => {
 
 // Vite middleware flow
 async function setupVite() {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "staging") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
