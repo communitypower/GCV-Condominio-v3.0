@@ -11,3 +11,6 @@ uploads/
 .terraform/
 *.backup
 *.dump
+.vscode/
+*.tfstate
+*.tfstate.backup
