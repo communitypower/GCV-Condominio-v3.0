@@ -89,6 +89,14 @@ resource "google_secret_manager_secret" "session_secret" {
   }
 }
 
+resource "google_secret_manager_secret" "gemini_api_key" {
+  secret_id = "gcv-gemini-api-key-${var.environment}"
+
+  replication {
+    auto {}
+  }
+}
+
 # --- CLOUD SQL (POSTGRESQL) ---
 
 resource "google_sql_database_instance" "gcv_db_instance" {
@@ -158,6 +166,13 @@ resource "google_secret_manager_secret_iam_member" "db_url_access" {
 # Grant Cloud Run SA read access to session secret
 resource "google_secret_manager_secret_iam_member" "session_secret_access" {
   secret_id = google_secret_manager_secret.session_secret.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
+
+# Grant Cloud Run SA read access to gemini key secret
+resource "google_secret_manager_secret_iam_member" "gemini_key_access" {
+  secret_id = google_secret_manager_secret.gemini_api_key.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.cloud_run_sa.email}"
 }
@@ -247,6 +262,16 @@ resource "google_cloud_run_v2_service" "gcv_app" {
           }
         }
       }
+
+      env {
+        name = "GEMINI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.gemini_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
     }
   }
 
@@ -258,6 +283,7 @@ resource "google_cloud_run_v2_service" "gcv_app" {
   depends_on = [
     google_secret_manager_secret_iam_member.db_url_access,
     google_secret_manager_secret_iam_member.session_secret_access,
+    google_secret_manager_secret_iam_member.gemini_key_access,
     google_project_iam_member.cloudrun_sql_client,
     google_storage_bucket_iam_member.storage_access
   ]
