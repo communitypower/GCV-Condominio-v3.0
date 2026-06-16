@@ -191,11 +191,23 @@ resource "google_cloud_run_v2_service" "gcv_app" {
       max_instance_count = 5 # Prevent run-away costs
     }
 
+    volumes {
+      name = "cloudsql"
+      cloud_sql_instance {
+        instances = [google_sql_database_instance.gcv_db_instance.connection_name]
+      }
+    }
+
     containers {
       image = var.container_image
 
       ports {
         container_port = 3000
+      }
+
+      volume_mounts {
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
       }
 
       resources {
