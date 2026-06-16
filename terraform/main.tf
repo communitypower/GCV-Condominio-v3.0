@@ -210,10 +210,6 @@ resource "google_cloud_run_v2_service" "gcv_app" {
         value = var.environment
       }
 
-      env {
-        name  = "PORT"
-        value = "3000"
-      }
 
       env {
         name  = "ATTACHMENTS_BUCKET"
@@ -281,8 +277,8 @@ resource "google_monitoring_alert_policy" "cpu_spike" {
       }
       aggregations {
         alignment_period     = "60s"
-        per_series_aligner   = "ALIGN_MEAN"
-        cross_series_reducer = "REDUCE_MEAN"
+        per_series_aligner   = "ALIGN_PERCENTILE_99"
+        cross_series_reducer = "REDUCE_PERCENTILE_99"
       }
     }
   }
@@ -318,7 +314,7 @@ resource "google_monitoring_alert_policy" "sql_connections" {
   conditions {
     display_name = "Cloud SQL active connections exceed 80% capacity"
     condition_threshold {
-      filter          = "resource.type=\"cloud_sql_database\" AND resource.labels.database_id=\"${var.project_id}:${google_sql_database_instance.gcv_db_instance.name}\" AND metric.type=\"cloudsql.googleapis.com/database/postgresql/num_backends\""
+      filter          = "resource.type=\"cloudsql_database\" AND resource.labels.database_id=\"${var.project_id}:${google_sql_database_instance.gcv_db_instance.name}\" AND metric.type=\"cloudsql.googleapis.com/database/postgresql/num_backends\""
       duration        = "300s"
       comparison      = "COMPARISON_GT"
       threshold_value = 80.0
