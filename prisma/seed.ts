@@ -1,4 +1,5 @@
 import { PrismaClient, UnitType, UnitStatus, RelationshipRole, PlatformRole, EquipmentStatus, PlanFrequency, PlanStatus, MaintenanceCategory, MaintenancePriority, MaintenanceStatus, BillingStatus, AuditAction } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -79,7 +80,7 @@ async function main() {
   const syndicUser = await prisma.user.create({
     data: {
       email: syndicPerson.email,
-      passwordHash: "sindico123",
+      passwordHash: bcrypt.hashSync("sindico123", 10),
       personId: syndicPerson.id,
     },
   });
@@ -105,7 +106,7 @@ async function main() {
   const staffUser = await prisma.user.create({
     data: {
       email: staffPerson.email,
-      passwordHash: "zelador123",
+      passwordHash: bcrypt.hashSync("zelador123", 10),
       personId: staffPerson.id,
     },
   });
@@ -166,7 +167,7 @@ async function main() {
     const user = await prisma.user.create({
       data: {
         email: person.email,
-        passwordHash: "resident123",
+        passwordHash: bcrypt.hashSync("resident123", 10),
         personId: person.id,
       },
     });

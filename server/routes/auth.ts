@@ -1,11 +1,61 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 const prisma = new PrismaClient();
 
+// POST /api/v1/auth/login
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { person: true, memberships: true },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: "E-mail ou senha incorretos." });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "E-mail ou senha incorretos." });
+    }
+
+    // Set signed cookie (expires in 24h)
+    res.cookie('gcv_session', user.id, {
+      httpOnly: true,
+      signed: true,
+      maxAge: 24 * 60 * 60 * 1000,
+      sameSite: 'lax',
+    });
+
+    res.json({
+      message: "Autenticado com sucesso.",
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.person?.name || "User",
+        memberships: user.memberships,
+      },
+    });
+  } catch (error) {
+    console.error("Login Error:", error);
+    res.status(500).json({ error: "Erro interno ao realizar login." });
+  }
+});
+
 // POST /api/v1/auth/mock-login
 router.post('/mock-login', async (req, res) => {
+  if (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging') {
+    return res.status(403).json({ error: "Login mock desabilitado em ambiente de produção/homologação." });
+  }
+
   const { email } = req.body;
   if (!email) {
     return res.status(400).json({ error: "E-mail é obrigatório." });

@@ -133,6 +133,10 @@ export default function App() {
     const saved = localStorage.getItem('gcv_logged_user');
     return saved ? JSON.parse(saved) : null;
   });
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
 
   // States initialized from localStorage or initial mock files, separated by building
   const [edificios, setEdificios] = useState<Edificio[]>(() => {
@@ -1029,7 +1033,59 @@ export default function App() {
   };
 
   // Authentication handlers
-  const handleLogin = async (selectedUser: LoggedInUser) => {
+  const handleCredentialsLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginEmail || !loginPassword) {
+      setLoginError("E-mail e senha são obrigatórios.");
+      return;
+    }
+
+    setLoginLoading(true);
+    setLoginError(null);
+
+    try {
+      const response = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao realizar login.');
+      }
+
+      const matchedPreset = PRESET_USERS.find(pu => pu.email === data.user.email);
+      let enrichedUser: LoggedInUser;
+      if (matchedPreset) {
+        enrichedUser = {
+          ...matchedPreset,
+          accountId: data.user.memberships?.[0]?.accountId,
+          memberships: data.user.memberships
+        };
+      } else {
+        enrichedUser = {
+          name: data.user.name,
+          email: data.user.email,
+          role: data.user.memberships[0]?.role === 'syndic' ? 'admin' : data.user.memberships[0]?.role === 'manager' ? 'staff' : 'resident',
+          avatar: data.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
+          description: data.user.memberships[0]?.role || 'Morador',
+          accountId: data.user.memberships?.[0]?.accountId,
+          memberships: data.user.memberships
+        };
+      }
+
+      setUser(enrichedUser);
+      localStorage.setItem('gcv_logged_user', JSON.stringify(enrichedUser));
+      setActiveTab('dashboard');
+      triggerNotification(`Acesso autorizado! Bem-vindo(a), ${enrichedUser.name}!`);
+    } catch (error: any) {
+      setLoginError(error.message);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleMockLogin = async (selectedUser: LoggedInUser) => {
     try {
       const response = await fetch('/api/v1/auth/mock-login', {
         method: 'POST',
@@ -1128,7 +1184,7 @@ export default function App() {
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-500/5 blur-3xl rounded-full pointer-events-none"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#D4AF37]/5 blur-3xl rounded-full pointer-events-none"></div>
         
-        <div className="w-full max-w-4xl bg-[#0F1115] border border-zinc-900 rounded-3xl overflow-hidden shadow-2xl relative z-10 p-8 sm:p-12 space-y-10">
+        <div className="w-full max-w-5xl bg-[#0F1115] border border-zinc-900 rounded-3xl overflow-hidden shadow-2xl relative z-10 p-8 sm:p-12 space-y-10">
           
           <div className="text-center space-y-2">
             <div className="mx-auto w-12 h-12 rounded-2xl bg-[#10b981]/10 border border-[#10b981]/30 flex items-center justify-center text-[#10b981] mb-2">
@@ -1140,47 +1196,96 @@ export default function App() {
             <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">Bella Vista Premium Suite • Central de Controle</p>
           </div>
 
-          <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider font-sans">Selecione seu Perfil de Acesso</h2>
-              <p className="text-xs text-zinc-400 mt-1">Escolha uma das credenciais homologadas abaixo para testar o sistema cooperado</p>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
+            {/* CREDENTIALS LOGIN FORM */}
+            <div className="lg:col-span-6 space-y-6 flex flex-col justify-center">
+              <div className="space-y-1">
+                <h2 className="text-base font-bold text-white uppercase tracking-wider font-sans">Acesso ao Portal</h2>
+                <p className="text-xs text-zinc-400">Entre com seu e-mail e senha de condomínio cadastrados</p>
+              </div>
+
+              <form onSubmit={handleCredentialsLogin} className="space-y-4">
+                {loginError && (
+                  <div className="p-3 bg-red-950/20 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">
+                    {loginError}
+                  </div>
+                )}
+                
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">E-mail</label>
+                  <input
+                    type="email"
+                    required
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="exemplo@email.com"
+                    className="w-full bg-zinc-950/70 border border-zinc-850 focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-650 focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">Senha</label>
+                  <input
+                    type="password"
+                    required
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Sua senha"
+                    className="w-full bg-zinc-950/70 border border-zinc-850 focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-650 focus:outline-none transition-all"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loginLoading}
+                  className="w-full bg-[#10b981] hover:bg-[#0ea572] disabled:bg-emerald-850 disabled:text-zinc-400 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-950/25"
+                >
+                  {loginLoading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Autenticando...</span>
+                    </>
+                  ) : (
+                    <span>Entrar no Sistema</span>
+                  )}
+                </button>
+              </form>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {PRESET_USERS.map((preset) => (
-                <button
-                  key={preset.role}
-                  onClick={() => handleLogin(preset)}
-                  className="bg-zinc-950/60 border border-zinc-850 hover:border-[#10b981]/60 p-6 rounded-2xl text-left hover:scale-[1.02] active:scale-[0.98] transition-all flex flex-col justify-between space-y-5 shadow-sm group"
-                >
-                  <div className="space-y-3 text-left">
-                    <span className={`inline-block text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                      preset.role === 'admin' 
-                        ? 'bg-[#10b981]/15 text-[#10b981]' 
-                        : preset.role === 'staff'
-                        ? 'bg-amber-950/20 text-amber-500'
-                        : 'bg-emerald-950/20 text-emerald-400'
-                    }`}>
-                      {preset.role === 'admin' ? 'Administrador' : preset.role === 'staff' ? 'Equipe Zeladoria' : 'Morador'}
-                    </span>
+            {/* VERTICAL DIVIDER */}
+            <div className="hidden lg:block lg:col-span-1 w-px bg-zinc-900/80 my-2 self-stretch mx-auto"></div>
 
+            {/* MOCK PROFILES DEVELOPER PANEL */}
+            <div className="lg:col-span-5 space-y-6 flex flex-col justify-center">
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[8px] bg-amber-950/20 text-amber-500 border border-amber-900/30 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">DEV MODE</span>
+                  <h2 className="text-base font-bold text-white uppercase tracking-wider font-sans">Acesso de Testes</h2>
+                </div>
+                <p className="text-xs text-zinc-400">Escolha um perfil homologado para testes rápidos locais</p>
+              </div>
+
+              <div className="space-y-3">
+                {PRESET_USERS.map((preset) => (
+                  <button
+                    key={preset.role}
+                    type="button"
+                    onClick={() => handleMockLogin(preset)}
+                    className="w-full bg-zinc-950/40 border border-zinc-850 hover:border-[#10b981]/50 p-4 rounded-xl text-left hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-between shadow-sm group"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-zinc-850 flex items-center justify-center font-bold text-xs text-white border border-zinc-800 group-hover:border-[#10b981]/25 shrink-0">
+                      <div className="w-9 h-9 rounded-lg bg-zinc-850 flex items-center justify-center font-bold text-xs text-white border border-zinc-800 shrink-0">
                         {preset.avatar}
                       </div>
-                      <div className="text-left">
-                        <p className="text-xs font-bold text-white group-hover:text-emerald-400 transition-colors leading-tight">{preset.name}</p>
-                        <p className="text-[10px] text-zinc-500 font-semibold leading-tight mt-0.5">{preset.description}</p>
+                      <div>
+                        <p className="text-xs font-bold text-white leading-tight group-hover:text-[#10b981] transition-colors">{preset.name}</p>
+                        <p className="text-[9px] text-zinc-500 font-semibold leading-tight mt-0.5">{preset.description}</p>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-zinc-850/60 w-full flex items-center justify-between text-[11px] font-bold text-zinc-400 group-hover:text-[#10b981] transition-colors">
-                    <span>Acessar Portal</span>
-                    <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
-                  </div>
-                </button>
-              ))}
+                    <ArrowRight className="w-3.5 h-3.5 text-zinc-550 group-hover:text-[#10b981] group-hover:translate-x-0.5 transition-all" />
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
