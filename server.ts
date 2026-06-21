@@ -34,7 +34,7 @@ app.use("/api/v1/condominiums", equipmentRouter);
 app.use("/api/v1/condominiums", documentsRouter);
 app.use("/api/v1/accounts", auditRouter);
 
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
