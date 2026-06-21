@@ -110,14 +110,28 @@ model Account {
 }
 
 model User {
-  id           String       @id @default(uuid())
-  email        String       @unique
-  passwordHash String       // For dev login mock authentication
-  personId     String?      @unique
-  person       Person?      @relation(fields: [personId], references: [id])
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  memberships  Membership[]
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String?        // For dev login mock authentication, optional for social login users
+  personId      String?        @unique
+  person        Person?        @relation(fields: [personId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  memberships   Membership[]
+  oauthAccounts OauthAccount[]
+}
+
+model OauthAccount {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String   // "google" or "microsoft"
+  providerUserId String   // The unique ID from the provider (e.g. sub claim)
+  email          String?  // Email returned by the provider
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([provider, providerUserId])
 }
 
 model Person {

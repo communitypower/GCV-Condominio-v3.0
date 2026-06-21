@@ -137,6 +137,8 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [microsoftLoading, setMicrosoftLoading] = useState(false);
 
   // States initialized from localStorage or initial mock files, separated by building
   const [edificios, setEdificios] = useState<Edificio[]>(() => {
@@ -1110,6 +1112,77 @@ export default function App() {
     }
   };
 
+  const handleGoogleLogin = () => {
+    setGoogleLoading(true);
+    setLoginError(null);
+    const width = 500;
+    const height = 650;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+    window.open(
+      '/api/v1/auth/google/login',
+      'google_oauth_popup',
+      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
+    );
+  };
+
+  const handleMicrosoftLogin = () => {
+    setMicrosoftLoading(true);
+    setLoginError(null);
+    const width = 500;
+    const height = 650;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+    window.open(
+      '/api/v1/auth/microsoft/login',
+      'microsoft_oauth_popup',
+      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
+    );
+  };
+
+  useEffect(() => {
+    const handleAuthMessage = (event: MessageEvent) => {
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.startsWith('http://127.0.0.1')) {
+         return;
+      }
+
+      if (event.data?.type === 'GOOGLE_AUTH_SUCCESS' || event.data?.type === 'MICROSOFT_AUTH_SUCCESS') {
+        const { user: loggedUser } = event.data.payload;
+        
+        const matchedPreset = PRESET_USERS.find(pu => pu.email === loggedUser.email);
+        let enrichedUser: LoggedInUser;
+        if (matchedPreset) {
+          enrichedUser = {
+            ...matchedPreset,
+            accountId: loggedUser.memberships?.[0]?.accountId,
+            memberships: loggedUser.memberships
+          };
+        } else {
+          enrichedUser = {
+            name: loggedUser.name,
+            email: loggedUser.email,
+            role: loggedUser.memberships[0]?.role === 'syndic' ? 'admin' : loggedUser.memberships[0]?.role === 'manager' ? 'staff' : 'resident',
+            avatar: loggedUser.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
+            description: loggedUser.memberships[0]?.role || 'Morador',
+            accountId: loggedUser.memberships?.[0]?.accountId,
+            memberships: loggedUser.memberships
+          };
+        }
+
+        setUser(enrichedUser);
+        localStorage.setItem('gcv_logged_user', JSON.stringify(enrichedUser));
+        setActiveTab('dashboard');
+        setGoogleLoading(false);
+        setMicrosoftLoading(false);
+        triggerNotification(`Acesso autorizado! Bem-vindo(a), ${enrichedUser.name}!`);
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    return () => window.removeEventListener('message', handleAuthMessage);
+  }, []);
+
   const handleLogout = async () => {
     try {
       await fetch('/api/v1/auth/logout', { method: 'POST' });
@@ -1176,129 +1249,172 @@ export default function App() {
         : 'text-zinc-400 hover:bg-white/5 opacity-80 hover:opacity-100'
     }`;
   };
-
   if (!user) {
+    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
     return (
-      <div className="min-h-screen bg-[#0A0B0D] flex items-center justify-center p-6 text-slate-300 font-sans select-none relative overflow-hidden">
-        {/* Decorative background gradients */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-500/5 blur-3xl rounded-full pointer-events-none"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#D4AF37]/5 blur-3xl rounded-full pointer-events-none"></div>
-        
-        <div className="w-full max-w-5xl bg-[#0F1115] border border-zinc-900 rounded-3xl overflow-hidden shadow-2xl relative z-10 p-8 sm:p-12 space-y-10">
-          
-          <div className="text-center space-y-2">
-            <div className="mx-auto w-12 h-12 rounded-2xl bg-[#10b981]/10 border border-[#10b981]/30 flex items-center justify-center text-[#10b981] mb-2">
-              <Building className="w-6 h-6" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-white uppercase font-sans">
-              GCV <span className="text-[#10b981]">Condomínio</span>
-            </h1>
-            <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">Bella Vista Premium Suite • Central de Controle</p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
-            {/* CREDENTIALS LOGIN FORM */}
-            <div className="lg:col-span-6 space-y-6 flex flex-col justify-center">
-              <div className="space-y-1">
-                <h2 className="text-base font-bold text-white uppercase tracking-wider font-sans">Acesso ao Portal</h2>
-                <p className="text-xs text-zinc-400">Entre com seu e-mail e senha de condomínio cadastrados</p>
-              </div>
-
-              <form onSubmit={handleCredentialsLogin} className="space-y-4">
-                {loginError && (
-                  <div className="p-3 bg-red-950/20 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">
-                    {loginError}
-                  </div>
-                )}
+            <div className="min-h-screen bg-[#0A0B0D] flex items-center justify-center p-6 text-slate-300 font-sans select-none relative overflow-hidden">
+              {/* Decorative background gradients */}
+              <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-500/5 blur-3xl rounded-full pointer-events-none"></div>
+              <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#D4AF37]/5 blur-3xl rounded-full pointer-events-none"></div>
+              
+              <div className="w-full max-w-5xl bg-[#0F1115] border border-zinc-900 rounded-3xl overflow-hidden shadow-2xl relative z-10 p-8 sm:p-12 space-y-10">
                 
-                <div className="space-y-1.5 text-left">
-                  <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">E-mail</label>
-                  <input
-                    type="email"
-                    required
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="exemplo@email.com"
-                    className="w-full bg-zinc-950/70 border border-zinc-850 focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-650 focus:outline-none transition-all"
-                  />
+                <div className="text-center space-y-2">
+                  <div className="mx-auto w-12 h-12 rounded-2xl bg-[#10b981]/10 border border-[#10b981]/30 flex items-center justify-center text-[#10b981] mb-2">
+                    <Building className="w-6 h-6" />
+                  </div>
+                  <h1 className="text-2xl font-bold tracking-tight text-white uppercase font-sans">
+                    GCV <span className="text-[#10b981]">Condomínio</span>
+                  </h1>
+                  <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">Bella Vista Premium Suite • Central de Controle</p>
                 </div>
 
-                <div className="space-y-1.5 text-left">
-                  <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">Senha</label>
-                  <input
-                    type="password"
-                    required
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="Sua senha"
-                    className="w-full bg-zinc-950/70 border border-zinc-850 focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-650 focus:outline-none transition-all"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loginLoading}
-                  className="w-full bg-[#10b981] hover:bg-[#0ea572] disabled:bg-emerald-850 disabled:text-zinc-400 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-950/25"
-                >
-                  {loginLoading ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Autenticando...</span>
-                    </>
-                  ) : (
-                    <span>Entrar no Sistema</span>
-                  )}
-                </button>
-              </form>
-            </div>
-
-            {/* VERTICAL DIVIDER */}
-            <div className="hidden lg:block lg:col-span-1 w-px bg-zinc-900/80 my-2 self-stretch mx-auto"></div>
-
-            {/* MOCK PROFILES DEVELOPER PANEL */}
-            <div className="lg:col-span-5 space-y-6 flex flex-col justify-center">
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[8px] bg-amber-950/20 text-amber-500 border border-amber-900/30 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">DEV MODE</span>
-                  <h2 className="text-base font-bold text-white uppercase tracking-wider font-sans">Acesso de Testes</h2>
-                </div>
-                <p className="text-xs text-zinc-400">Escolha um perfil homologado para testes rápidos locais</p>
-              </div>
-
-              <div className="space-y-3">
-                {PRESET_USERS.map((preset) => (
-                  <button
-                    key={preset.role}
-                    type="button"
-                    onClick={() => handleMockLogin(preset)}
-                    className="w-full bg-zinc-950/40 border border-zinc-850 hover:border-[#10b981]/50 p-4 rounded-xl text-left hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-between shadow-sm group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-zinc-850 flex items-center justify-center font-bold text-xs text-white border border-zinc-800 shrink-0">
-                        {preset.avatar}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-white leading-tight group-hover:text-[#10b981] transition-colors">{preset.name}</p>
-                        <p className="text-[9px] text-zinc-500 font-semibold leading-tight mt-0.5">{preset.description}</p>
-                      </div>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
+                  {/* CREDENTIALS LOGIN FORM */}
+                  <div className={`${isLocalDev ? 'lg:col-span-6' : 'lg:col-span-8 lg:col-start-3 mx-auto w-full max-w-md'} space-y-6 flex flex-col justify-center`}>
+                    <div className="space-y-1">
+                      <h2 className="text-base font-bold text-white uppercase tracking-wider font-sans">Acesso ao Portal</h2>
+                      <p className="text-xs text-zinc-400">Entre com sua conta condominial cadastrada</p>
                     </div>
-                    <ArrowRight className="w-3.5 h-3.5 text-zinc-550 group-hover:text-[#10b981] group-hover:translate-x-0.5 transition-all" />
-                  </button>
-                ))}
+
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        disabled={googleLoading || microsoftLoading || loginLoading}
+                        onClick={handleGoogleLogin}
+                        className="w-full bg-zinc-950/70 border border-zinc-850 hover:border-[#10b981]/50 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
+                      >
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
+                          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 6.16l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z" fill="#EA4335" />
+                        </svg>
+                        {googleLoading ? <span>Conectando...</span> : <span>Continuar com Google</span>}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={googleLoading || microsoftLoading || loginLoading}
+                        onClick={handleMicrosoftLogin}
+                        className="w-full bg-zinc-950/70 border border-zinc-850 hover:border-[#10b981]/50 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
+                      >
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 23 23" fill="currentColor">
+                          <path d="M0 0h11v11H0z" fill="#F25022"/>
+                          <path d="M12 0h11v11H12z" fill="#7FBA00"/>
+                          <path d="M0 12h11v11H0z" fill="#00A4EF"/>
+                          <path d="M12 12h11v11H12z" fill="#FFB900"/>
+                        </svg>
+                        {microsoftLoading ? <span>Conectando...</span> : <span>Continuar com Microsoft</span>}
+                      </button>
+                    </div>
+
+                    <div className="relative flex py-2 items-center">
+                      <div className="flex-grow border-t border-zinc-900"></div>
+                      <span className="flex-shrink mx-4 text-[9px] text-zinc-550 font-bold uppercase tracking-wider">ou</span>
+                      <div className="flex-grow border-t border-zinc-900"></div>
+                    </div>
+
+                    <form onSubmit={handleCredentialsLogin} className="space-y-4">
+                      {loginError && (
+                        <div className="p-3 bg-red-950/20 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">
+                          {loginError}
+                        </div>
+                      )}
+                      
+                      <div className="space-y-1.5 text-left">
+                        <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">E-mail</label>
+                        <input
+                          type="email"
+                          required
+                          value={loginEmail}
+                          onChange={(e) => setLoginEmail(e.target.value)}
+                          placeholder="exemplo@email.com"
+                          className="w-full bg-zinc-950/70 border border-zinc-850 focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-650 focus:outline-none transition-all"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5 text-left">
+                        <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">Senha</label>
+                        <input
+                          type="password"
+                          required
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          placeholder="Sua senha"
+                          className="w-full bg-zinc-950/70 border border-zinc-850 focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-650 focus:outline-none transition-all"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={loginLoading || googleLoading || microsoftLoading}
+                        className="w-full bg-[#10b981] hover:bg-[#0ea572] disabled:bg-emerald-850 disabled:text-zinc-400 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-950/25"
+                      >
+                        {loginLoading ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Autenticando...</span>
+                          </>
+                        ) : (
+                          <span>Entrar com E-mail</span>
+                        )}
+                      </button>
+                    </form>
+                  </div>
+
+                  {isLocalDev && (
+                    <>
+                      {/* VERTICAL DIVIDER */}
+                      <div className="hidden lg:block lg:col-span-1 w-px bg-zinc-900/80 my-2 self-stretch mx-auto"></div>
+
+                      {/* MOCK PROFILES DEVELOPER PANEL */}
+                      <div className="lg:col-span-5 space-y-6 flex flex-col justify-center">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[8px] bg-amber-950/20 text-amber-500 border border-amber-900/30 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">DEV MODE</span>
+                            <h2 className="text-base font-bold text-white uppercase tracking-wider font-sans">Acesso de Testes</h2>
+                          </div>
+                          <p className="text-xs text-zinc-400">Escolha um perfil homologado para testes rápidos locais</p>
+                        </div>
+
+                        <div className="space-y-3">
+                          {PRESET_USERS.map((preset) => (
+                            <button
+                              key={preset.role}
+                              type="button"
+                              onClick={() => handleMockLogin(preset)}
+                              className="w-full bg-zinc-950/40 border border-zinc-850 hover:border-[#10b981]/50 p-4 rounded-xl text-left hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-between shadow-sm group"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-lg bg-zinc-850 flex items-center justify-center font-bold text-xs text-white border border-zinc-800 shrink-0">
+                                  {preset.avatar}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-white leading-tight group-hover:text-[#10b981] transition-colors">{preset.name}</p>
+                                  <p className="text-[9px] text-zinc-500 font-semibold leading-tight mt-0.5">{preset.description}</p>
+                                </div>
+                              </div>
+                              <ArrowRight className="w-3.5 h-3.5 text-zinc-550 group-hover:text-[#10b981] group-hover:translate-x-0.5 transition-all" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="text-center pt-2 border-t border-zinc-900">
+                  <p className="text-[10px] text-zinc-650 font-semibold tracking-wider uppercase">
+                    Aviso de Segurança • Acesso local simulado de alto padrão predial
+                  </p>
+                </div>
+
               </div>
             </div>
-          </div>
-
-          <div className="text-center pt-2 border-t border-zinc-900">
-            <p className="text-[10px] text-zinc-650 font-semibold tracking-wider uppercase">
-              Aviso de Segurança • Acesso local simulado de alto padrão predial
-            </p>
-          </div>
-
-        </div>
-      </div>
-    );
-  }
+          );
+        }
 
   return (
     <div className="min-h-screen bg-[#0A0B0D] text-slate-300 flex flex-col md:flex-row font-sans">

@@ -18,6 +18,7 @@ import auditRouter from "./server/routes/audit";
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET || "gcv_local_secret"));
 
@@ -285,6 +286,11 @@ app.get("/api/github/repos", checkGithubIntegration, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Fallback for unmatched API routes
+app.all("/api/*", (req, res) => {
+  res.status(404).json({ error: "Endpoint de API não encontrado." });
 });
 
 // Vite middleware flow
