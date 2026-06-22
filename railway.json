@@ -4,7 +4,7 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "preDeployCommand": "npx prisma migrate resolve --applied 0_init 2>/dev/null; npx prisma migrate deploy",
+    "preDeployCommand": "npx prisma migrate deploy",
     "startCommand": "npm run start",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",
