@@ -34,6 +34,7 @@ NODE_ENV=production
 APP_URL=https://<environment-domain>
 DATABASE_URL=<railway-postgres-url>
 SESSION_SECRET=<strong-random-secret>
+BETA_ALLOWED_EMAILS=<comma-separated-beta-user-emails>
 
 GOOGLE_CLIENT_ID=<provider-client-id>
 GOOGLE_CLIENT_SECRET=<provider-client-secret>
@@ -53,6 +54,7 @@ Environment-specific values:
 - `dev`: `NODE_ENV=development` is acceptable only if the Railway environment is intentionally running Vite middleware; otherwise use `production`.
 - `staging`: use `NODE_ENV=staging`.
 - `production`: use `NODE_ENV=production`.
+- `BETA_ALLOWED_EMAILS`: required in `staging` and `production`; only these e-mails can complete password login or OAuth.
 
 Feature flags:
 

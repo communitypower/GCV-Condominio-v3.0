@@ -28,6 +28,7 @@ services:
       - NODE_ENV=production
       - APP_URL=http://localhost:3000
       - SESSION_SECRET=${SESSION_SECRET:-gcv_local_compose_secret}
+      - BETA_ALLOWED_EMAILS=${BETA_ALLOWED_EMAILS:-sindico@gcv.com.br,zelador@gcv.com.br,carlos.ramos@email.com,mariana.alves@email.com}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash}
       - ENABLE_AI_ASSISTANT=${ENABLE_AI_ASSISTANT:-false}

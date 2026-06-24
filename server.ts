@@ -34,6 +34,7 @@ function assertRequiredEnv() {
     required.push(
       "APP_URL",
       "SESSION_SECRET",
+      "BETA_ALLOWED_EMAILS",
       "GOOGLE_CLIENT_ID",
       "GOOGLE_CLIENT_SECRET",
       "MICROSOFT_CLIENT_ID",

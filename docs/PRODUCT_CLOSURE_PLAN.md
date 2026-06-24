@@ -51,6 +51,7 @@ Required runtime variables:
 - `APP_URL`
 - `DATABASE_URL`
 - `SESSION_SECRET`
+- `BETA_ALLOWED_EMAILS`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `MICROSOFT_CLIENT_ID`
@@ -85,7 +86,7 @@ Release rules:
 - Keep Google/Microsoft OAuth for beta.
 - Block mock login outside local/dev.
 - Use secure, signed, `HttpOnly` cookies in production-like environments.
-- Add beta allowlist before real users enter production.
+- Require `BETA_ALLOWED_EMAILS` in staging/production and block login/OAuth for users outside the allowlist.
 - Audit login, logout, failed login, and OAuth account linking.
 - Expand tenant isolation tests to cover account, condominium, unit, billing, documents, and audit routes.
 

@@ -6,6 +6,57 @@ import * as openid from 'openid-client';
 const router = Router();
 const prisma = new PrismaClient();
 
+function isProductionLike() {
+  return process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+}
+
+function getAllowedBetaEmails() {
+  return new Set(
+    (process.env.BETA_ALLOWED_EMAILS || '')
+      .split(/[\s,;]+/)
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function isBetaAllowed(email: string) {
+  if (!isProductionLike()) return true;
+  return getAllowedBetaEmails().has(email.trim().toLowerCase());
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function setSessionCookie(res: any, userId: string) {
+  res.cookie('gcv_session', userId, {
+    httpOnly: true,
+    signed: true,
+    secure: isProductionLike(),
+    maxAge: 24 * 60 * 60 * 1000,
+    sameSite: 'lax',
+  });
+}
+
+function renderUnauthorizedEmail(email: string) {
+  const safeEmail = escapeHtml(email);
+  return `
+    <html>
+      <body style="font-family: sans-serif; text-align: center; padding: 45px; background: #0c0d10; color: #EF4444;">
+        <h2>Acesso Não Autorizado</h2>
+        <p>O e-mail <strong>${safeEmail}</strong> não está habilitado para este ambiente.</p>
+        <p style="color: #94A3B8; font-size: 13px;">Entre em contato com a administração do condomínio para obter um convite.</p>
+        <button onclick="window.close()" style="margin-top: 15px; padding: 10px 20px; background: #EF4444; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">Fechar Janela</button>
+      </body>
+    </html>
+  `;
+}
+
 // POST /api/v1/auth/login
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -23,20 +74,20 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
 
+    if (!user.passwordHash) {
+      return res.status(401).json({ error: "E-mail ou senha incorretos." });
+    }
+
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatch) {
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
 
-    // Set signed cookie (expires in 24h)
-    const isProductionOrStaging = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
-    res.cookie('gcv_session', user.id, {
-      httpOnly: true,
-      signed: true,
-      secure: isProductionOrStaging,
-      maxAge: 24 * 60 * 60 * 1000,
-      sameSite: 'lax',
-    });
+    if (!isBetaAllowed(user.email)) {
+      return res.status(403).json({ error: "Usuário não habilitado para este ambiente." });
+    }
+
+    setSessionCookie(res, user.id);
 
     res.json({
       message: "Autenticado com sucesso.",
@@ -76,15 +127,7 @@ router.post('/mock-login', async (req, res) => {
       });
     }
 
-    // Set signed cookie (expires in 24h)
-    const isProductionOrStaging = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
-    res.cookie('gcv_session', user.id, {
-      httpOnly: true,
-      signed: true,
-      secure: isProductionOrStaging,
-      maxAge: 24 * 60 * 60 * 1000,
-      sameSite: 'lax',
-    });
+    setSessionCookie(res, user.id);
 
     res.json({
       message: "Autenticado com sucesso via mock login.",
@@ -183,12 +226,11 @@ router.get('/google/login', async (req, res) => {
     const codeChallenge = await openid.calculatePKCECodeChallenge(codeVerifier);
 
     const redirectUri = `${req.protocol}://${req.get('host')}/api/v1/auth/google/callback`;
-    const isProductionOrStaging = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
 
     res.cookie('gcv_oauth_state', JSON.stringify({ state, codeVerifier, redirectUri }), {
       httpOnly: true,
       signed: true,
-      secure: isProductionOrStaging,
+      secure: isProductionLike(),
       maxAge: 10 * 60 * 1000, // 10 minutes
       sameSite: 'lax',
     });
@@ -260,6 +302,10 @@ router.get('/google/callback', async (req, res) => {
       throw new Error("E-mail não fornecido pelo Google.");
     }
 
+    if (!isBetaAllowed(email)) {
+      return res.status(403).send(renderUnauthorizedEmail(email));
+    }
+
     // 1. Check if OAuth account is already linked
     let oauthAccount = await prisma.oauthAccount.findUnique({
       where: {
@@ -301,16 +347,7 @@ router.get('/google/callback', async (req, res) => {
         });
 
         if (!existingPerson) {
-          return res.status(403).send(`
-            <html>
-              <body style="font-family: sans-serif; text-align: center; padding: 45px; background: #0c0d10; color: #EF4444;">
-                <h2>Acesso Não Autorizado</h2>
-                <p>O e-mail <strong>${email}</strong> não está cadastrado no sistema GCV.</p>
-                <p style="color: #94A3B8; font-size: 13px;">Entre em contato com a administração do condomínio para obter um convite.</p>
-                <button onclick="window.close()" style="margin-top: 15px; padding: 10px 20px; background: #EF4444; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">Fechar Janela</button>
-              </body>
-            </html>
-          `);
+          return res.status(403).send(renderUnauthorizedEmail(email));
         }
 
         // Create new User
@@ -342,14 +379,7 @@ router.get('/google/callback', async (req, res) => {
       throw new Error("Erro ao carregar ou criar usuário.");
     }
 
-    const isProductionOrStaging = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
-    res.cookie('gcv_session', user.id, {
-      httpOnly: true,
-      signed: true,
-      secure: isProductionOrStaging,
-      maxAge: 24 * 60 * 60 * 1000,
-      sameSite: 'lax',
-    });
+    setSessionCookie(res, user.id);
 
     const payloadUser = {
       id: user.id,
@@ -416,12 +446,11 @@ router.get('/microsoft/login', async (req, res) => {
     const codeChallenge = await openid.calculatePKCECodeChallenge(codeVerifier);
 
     const redirectUri = `${req.protocol}://${req.get('host')}/api/v1/auth/microsoft/callback`;
-    const isProductionOrStaging = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
 
     res.cookie('gcv_oauth_state_ms', JSON.stringify({ state, codeVerifier, redirectUri }), {
       httpOnly: true,
       signed: true,
-      secure: isProductionOrStaging,
+      secure: isProductionLike(),
       maxAge: 10 * 60 * 1000, // 10 minutes
       sameSite: 'lax',
     });
@@ -493,6 +522,10 @@ router.get('/microsoft/callback', async (req, res) => {
       throw new Error("E-mail não fornecido pela Microsoft.");
     }
 
+    if (!isBetaAllowed(email)) {
+      return res.status(403).send(renderUnauthorizedEmail(email));
+    }
+
     // 1. Check if OAuth account is already linked
     let oauthAccount = await prisma.oauthAccount.findUnique({
       where: {
@@ -534,16 +567,7 @@ router.get('/microsoft/callback', async (req, res) => {
         });
 
         if (!existingPerson) {
-          return res.status(403).send(`
-            <html>
-              <body style="font-family: sans-serif; text-align: center; padding: 45px; background: #0c0d10; color: #EF4444;">
-                <h2>Acesso Não Autorizado</h2>
-                <p>O e-mail <strong>${email}</strong> não está cadastrado no sistema GCV.</p>
-                <p style="color: #94A3B8; font-size: 13px;">Entre em contato com a administração do condomínio para obter um convite.</p>
-                <button onclick="window.close()" style="margin-top: 15px; padding: 10px 20px; background: #EF4444; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">Fechar Janela</button>
-              </body>
-            </html>
-          `);
+          return res.status(403).send(renderUnauthorizedEmail(email));
         }
 
         // Create new User
@@ -575,14 +599,7 @@ router.get('/microsoft/callback', async (req, res) => {
       throw new Error("Erro ao carregar ou criar usuário.");
     }
 
-    const isProductionOrStaging = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
-    res.cookie('gcv_session', user.id, {
-      httpOnly: true,
-      signed: true,
-      secure: isProductionOrStaging,
-      maxAge: 24 * 60 * 60 * 1000,
-      sameSite: 'lax',
-    });
+    setSessionCookie(res, user.id);
 
     const payloadUser = {
       id: user.id,

@@ -171,6 +171,38 @@ async function runTests() {
   try {
     console.log('\n--- Running OAuth flow tests ---\n');
 
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalBetaAllowedEmails = process.env.BETA_ALLOWED_EMAILS;
+
+    console.log('Test 0: Testing production-like beta allowlist for password login...');
+    try {
+      process.env.NODE_ENV = 'staging';
+      process.env.BETA_ALLOWED_EMAILS = 'sindico@gcv.com.br';
+
+      const blockedLoginRes = await fetch(`${BASE_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'zelador@gcv.com.br', password: 'zelador123' }),
+      });
+      assert.strictEqual(blockedLoginRes.status, 403, 'Non-allowlisted staging user should be blocked');
+
+      const allowedLoginRes = await fetch(`${BASE_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'sindico@gcv.com.br', password: 'sindico123' }),
+      });
+      assert.strictEqual(allowedLoginRes.status, 200, 'Allowlisted staging user should log in');
+      assert.ok(allowedLoginRes.headers.get('set-cookie')?.includes('gcv_session'), 'Allowlisted login should set session cookie');
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+      if (originalBetaAllowedEmails === undefined) {
+        delete process.env.BETA_ALLOWED_EMAILS;
+      } else {
+        process.env.BETA_ALLOWED_EMAILS = originalBetaAllowedEmails;
+      }
+    }
+    console.log('✔ Production-like beta allowlist enforced for password login.');
+
     // Setup helper data: ensure a pre-registered Person exists for testing signup
     const preRegisteredEmail = 'new-social-user@gcv.com.br';
     
@@ -241,7 +273,7 @@ async function runTests() {
 
     assert.strictEqual(callbackRes.status, 403, 'Should return 403 Forbidden for unregistered email');
     const callbackText = await callbackRes.text();
-    assert.ok(callbackText.includes('não está cadastrado'), 'Should notify user about lack of invitation/registration');
+    assert.ok(callbackText.includes('Acesso Não Autorizado'), 'Should notify user about unauthorized access');
     console.log('✔ Unregistered OAuth login correctly rejected with 403.');
 
     // ==========================================

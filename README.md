@@ -113,6 +113,7 @@ NODE_ENV=development
 APP_URL=http://localhost:3000
 DATABASE_URL=postgresql://gcv_user:gcv_password@localhost:5432/gcv_condominio?schema=public
 SESSION_SECRET=gcv_local_dev_secret
+BETA_ALLOWED_EMAILS=
 
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash
@@ -237,6 +238,7 @@ Principais:
 | `APP_URL` | URL publica/base da aplicacao |
 | `DATABASE_URL` | Conexao PostgreSQL |
 | `SESSION_SECRET` | Assinatura de cookies/sessao |
+| `BETA_ALLOWED_EMAILS` | Allowlist de e-mails habilitados em staging/producao |
 | `GEMINI_API_KEY` | Chave da API Gemini |
 | `GEMINI_MODEL` | Modelo Gemini usado pelo assistente |
 | `ENABLE_GITHUB_INTEGRATION` | Habilita/desabilita rotas GitHub/Gist |
