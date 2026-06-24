@@ -63,6 +63,7 @@ O codigo diferencia runtime de desenvolvimento e producao por `NODE_ENV`:
 
 - `development`: usa Vite em modo middleware dentro do Express
 - `staging` / `production`: serve os arquivos estaticos gerados em `dist`
+- `staging` / `production`: bloqueiam metodos mutaveis cross-origin via protecao CSRF baseada em `Origin`/`APP_URL`
 
 ## Pre-requisitos
 

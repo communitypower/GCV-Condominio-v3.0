@@ -55,6 +55,7 @@ Environment-specific values:
 - `staging`: use `NODE_ENV=staging`.
 - `production`: use `NODE_ENV=production`.
 - `BETA_ALLOWED_EMAILS`: required in `staging` and `production`; only these e-mails can complete password login or OAuth.
+- `APP_URL`: must exactly match the public HTTPS app origin because production-like CSRF protection allows unsafe browser requests only from this origin or the current request host.
 
 Feature flags:
 

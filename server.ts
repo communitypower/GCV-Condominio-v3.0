@@ -19,6 +19,7 @@ import equipmentRouter from "./server/routes/equipment";
 import documentsRouter from "./server/routes/documents";
 import auditRouter from "./server/routes/audit";
 import { requireAuth } from "./server/middleware/auth";
+import { createCsrfProtection } from "./server/middleware/csrf";
 
 dotenv.config();
 
@@ -93,6 +94,10 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser(process.env.SESSION_SECRET || "gcv_local_secret"));
+app.use(createCsrfProtection({
+  enabled: isProductionLike,
+  appUrl: process.env.APP_URL,
+}));
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
