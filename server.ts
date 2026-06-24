@@ -3,6 +3,10 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
+import { PrismaClient } from "@prisma/client";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
+import { randomUUID } from "crypto";
 
 import authRouter from "./server/routes/auth";
 import condosRouter from "./server/routes/condominiums";
@@ -17,13 +21,102 @@ import auditRouter from "./server/routes/audit";
 
 dotenv.config();
 
+const prisma = new PrismaClient();
+const ENVIRONMENT = process.env.NODE_ENV || "development";
+const isProductionLike = ENVIRONMENT === "production" || ENVIRONMENT === "staging";
+const shouldServeStatic = isProductionLike || ENVIRONMENT === "test";
+const PORT = parseInt(process.env.PORT || "3000", 10);
+
+function assertRequiredEnv() {
+  const required = ["DATABASE_URL"];
+
+  if (isProductionLike) {
+    required.push(
+      "APP_URL",
+      "SESSION_SECRET",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "MICROSOFT_CLIENT_ID",
+      "MICROSOFT_CLIENT_SECRET",
+      "MICROSOFT_TENANT_ID"
+    );
+  }
+
+  if (process.env.ENABLE_AI_ASSISTANT === "true") {
+    required.push("GEMINI_API_KEY");
+  }
+
+  if (process.env.ENABLE_GITHUB_INTEGRATION === "true") {
+    required.push("GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET");
+  }
+
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+  }
+
+  if (!Number.isInteger(PORT) || PORT <= 0) {
+    throw new Error(`Invalid PORT value: ${process.env.PORT}`);
+  }
+}
+
+assertRequiredEnv();
+
 const app = express();
 app.set('trust proxy', 1);
-app.use(express.json());
+app.disable("x-powered-by");
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+app.use((req, res, next) => {
+  const requestId = req.get("x-request-id") || randomUUID();
+  res.setHeader("x-request-id", requestId);
+
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    console.log(JSON.stringify({
+      level: "info",
+      event: "http_request",
+      requestId,
+      environment: ENVIRONMENT,
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      latencyMs: Date.now() - startedAt,
+    }));
+  });
+
+  next();
+});
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser(process.env.SESSION_SECRET || "gcv_local_secret"));
 
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 1000,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isProductionLike ? 20 : 200,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
+const sensitiveLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: isProductionLike ? 20 : 120,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
+app.use(generalLimiter);
+
 // API Router Mounts
-app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/auth", authLimiter, authRouter);
 app.use("/api/v1/condominiums", condosRouter);
 app.use("/api/v1/condominiums", buildingsRouter);
 app.use("/api/v1/condominiums", unitsRouter);
@@ -34,15 +127,46 @@ app.use("/api/v1/condominiums", equipmentRouter);
 app.use("/api/v1/condominiums", documentsRouter);
 app.use("/api/v1/accounts", auditRouter);
 
-const PORT = parseInt(process.env.PORT || "3000", 10);
-
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
+    environment: ENVIRONMENT,
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
+});
+
+app.get("/livez", (req, res) => {
+  res.json({
+    status: "alive",
+    environment: ENVIRONMENT,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get("/readyz", async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({
+      status: "ready",
+      environment: ENVIRONMENT,
+      checks: {
+        database: "ok"
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Readiness check failed:", error);
+    res.status(503).json({
+      status: "not_ready",
+      environment: ENVIRONMENT,
+      checks: {
+        database: "failed"
+      },
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Middleware to restrict GitHub integration
@@ -74,8 +198,12 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 // Endpoint to interact with Gemini
-app.post("/api/gemini/chat", async (req, res) => {
+app.post("/api/gemini/chat", sensitiveLimiter, async (req, res) => {
   try {
+    if (process.env.ENABLE_AI_ASSISTANT !== "true") {
+      return res.status(403).json({ error: "Assistente de IA desabilitado neste ambiente." });
+    }
+
     const { prompt, contextData } = req.body;
     const ai = getGeminiClient();
 
@@ -233,7 +361,7 @@ app.get("/auth/callback", checkGithubIntegration, callbackHandler);
 app.get("/auth/callback/", checkGithubIntegration, callbackHandler);
 
 // POST /api/github/create-gist
-app.post("/api/github/create-gist", checkGithubIntegration, async (req, res) => {
+app.post("/api/github/create-gist", sensitiveLimiter, checkGithubIntegration, async (req, res) => {
   const { token, filename, content, description } = req.body;
   if (!token) {
     return res.status(401).json({ error: "Não autorizado: token ausente." });
@@ -295,7 +423,7 @@ app.all("/api/*", (req, res) => {
 
 // Vite middleware flow
 async function setupVite() {
-  if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "staging") {
+  if (!shouldServeStatic) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -312,9 +440,23 @@ async function setupVite() {
 }
 
 setupVite().then(() => {
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  const shutdown = async (signal: string) => {
+    console.log(`Received ${signal}. Shutting down...`);
+    server.close(async () => {
+      await prisma.$disconnect();
+      process.exit(0);
+    });
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }).catch((err) => {
   console.error("Failed to start server", err);
+  prisma.$disconnect().finally(() => {
+    process.exit(1);
+  });
 });

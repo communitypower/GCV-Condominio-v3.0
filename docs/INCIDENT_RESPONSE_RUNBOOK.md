@@ -1,5 +1,7 @@
 # GCV Condominio - Incident Response & Operations Runbook
 
+> Historical note: parts of this runbook reference the previous GCP Cloud Run plan. For the current Railway beta path, use `docs/RAILWAY_OPERATIONS_RUNBOOK.md` as the primary operational runbook.
+
 This runbook defines standard operating procedures for handling production incidents, system failures, security anomalies, and compliance events.
 
 ---

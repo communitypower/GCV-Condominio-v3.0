@@ -1,9 +1,17 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const createAuditLogSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  content: z.string().trim().min(1).max(5000),
+  type: z.enum(['tech', 'security', 'admin']),
+});
 
 // GET /api/v1/accounts/:accountId/audit
 router.get('/:accountId/audit', requireAuth, tenantGuard, requireRole([PlatformRole.admin, PlatformRole.syndic]), async (req: any, res) => {
@@ -22,13 +30,9 @@ router.get('/:accountId/audit', requireAuth, tenantGuard, requireRole([PlatformR
 });
 
 // POST /api/v1/accounts/:accountId/audit
-router.post('/:accountId/audit', requireAuth, tenantGuard, requireRole([PlatformRole.admin, PlatformRole.syndic]), async (req: any, res) => {
+router.post('/:accountId/audit', requireAuth, tenantGuard, requireRole([PlatformRole.admin, PlatformRole.syndic]), validateBody(createAuditLogSchema), async (req: any, res) => {
   const { accountId } = req.params;
   const { title, content, type } = req.body;
-
-  if (!title || !content || !type) {
-    return res.status(400).json({ error: "Título, descrição e subtipo são obrigatórios." });
-  }
 
   try {
     const auditEvent = await prisma.auditEvent.create({
@@ -49,4 +53,3 @@ router.post('/:accountId/audit', requireAuth, tenantGuard, requireRole([Platform
 });
 
 export default router;
-

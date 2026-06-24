@@ -1,9 +1,52 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole, EquipmentStatus, PlanFrequency, PlanStatus } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const equipmentStatusSchema = z.enum(EquipmentStatus);
+const planFrequencySchema = z.enum(PlanFrequency);
+const planStatusSchema = z.enum(PlanStatus);
+
+const createEquipmentSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  location: z.string().trim().min(1).max(160),
+  category: z.string().trim().min(1).max(80),
+  status: equipmentStatusSchema,
+  lastInspection: z.coerce.date().optional().nullable(),
+  nextInspection: z.coerce.date().optional().nullable(),
+  installDate: z.coerce.date().optional().nullable(),
+});
+
+const updateEquipmentSchema = z.object({
+  name: z.string().trim().min(1).max(160).optional(),
+  location: z.string().trim().min(1).max(160).optional(),
+  category: z.string().trim().min(1).max(80).optional(),
+  status: equipmentStatusSchema.optional(),
+  lastInspection: z.coerce.date().optional().nullable(),
+  nextInspection: z.coerce.date().optional().nullable(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'Ao menos um campo deve ser informado.',
+});
+
+const createPlanSchema = z.object({
+  equipmentId: z.string().uuid().optional().nullable(),
+  title: z.string().trim().min(1).max(160),
+  description: z.string().trim().min(1).max(5000),
+  frequency: planFrequencySchema,
+  nextOccurrence: z.coerce.date(),
+  status: planStatusSchema,
+});
+
+const updatePlanSchema = z.object({
+  status: planStatusSchema.optional(),
+  nextOccurrence: z.coerce.date().optional(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'Ao menos um campo deve ser informado.',
+});
 
 // GET /api/v1/condominiums/:condoId/equipment
 router.get('/:condoId/equipment', requireAuth, tenantGuard, async (req, res) => {
@@ -26,13 +69,10 @@ router.post(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(createEquipmentSchema),
   async (req, res) => {
     const { condoId } = req.params;
     const { name, location, category, status, lastInspection, nextInspection, installDate } = req.body;
-
-    if (!name || !location || !category || !status) {
-      return res.status(400).json({ error: "Nome, localização, categoria e status são obrigatórios." });
-    }
 
     try {
       const equipment = await prisma.equipment.create({
@@ -42,9 +82,9 @@ router.post(
           location,
           category,
           status: status as EquipmentStatus,
-          lastInspection: lastInspection ? new Date(lastInspection) : new Date(),
-          nextInspection: nextInspection ? new Date(nextInspection) : new Date(),
-          installDate: installDate ? new Date(installDate) : new Date(),
+          lastInspection: lastInspection || new Date(),
+          nextInspection: nextInspection || new Date(),
+          installDate: installDate || new Date(),
         },
       });
       res.status(201).json(equipment);
@@ -77,13 +117,10 @@ router.post(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(createPlanSchema),
   async (req, res) => {
     const { condoId } = req.params;
     const { equipmentId, title, description, frequency, nextOccurrence, status } = req.body;
-
-    if (!title || !description || !frequency || !nextOccurrence || !status) {
-      return res.status(400).json({ error: "Título, descrição, frequência, próxima ocorrência e status são obrigatórios." });
-    }
 
     try {
       if (equipmentId) {
@@ -102,7 +139,7 @@ router.post(
           title,
           description,
           frequency: frequency as PlanFrequency,
-          nextOccurrence: new Date(nextOccurrence),
+          nextOccurrence,
           status: status as PlanStatus,
         },
       });
@@ -120,13 +157,14 @@ router.patch(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(updatePlanSchema),
   async (req, res) => {
     const { planId } = req.params;
     const { status, nextOccurrence } = req.body;
     try {
       const updateData: any = {};
       if (status) updateData.status = status as PlanStatus;
-      if (nextOccurrence) updateData.nextOccurrence = new Date(nextOccurrence);
+      if (nextOccurrence) updateData.nextOccurrence = nextOccurrence;
 
       const plan = await prisma.maintenancePlan.update({
         where: { id: planId },
@@ -146,6 +184,7 @@ router.delete(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(updateEquipmentSchema),
   async (req, res) => {
     const { planId } = req.params;
     try {
@@ -175,8 +214,8 @@ router.patch(
       if (location) updateData.location = location;
       if (category) updateData.category = category;
       if (status) updateData.status = status as EquipmentStatus;
-      if (lastInspection) updateData.lastInspection = new Date(lastInspection);
-      if (nextInspection) updateData.nextInspection = new Date(nextInspection);
+      if (lastInspection) updateData.lastInspection = lastInspection;
+      if (nextInspection) updateData.nextInspection = nextInspection;
 
       const equipment = await prisma.equipment.update({
         where: { id: eqId },
@@ -191,4 +230,3 @@ router.patch(
 );
 
 export default router;
-

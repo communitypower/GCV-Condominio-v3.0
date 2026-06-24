@@ -1,9 +1,30 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole, UnitType, UnitStatus } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const createUnitSchema = z.object({
+  number: z.string().trim().min(1).max(40),
+  type: z.enum(UnitType),
+  status: z.enum(UnitStatus),
+  fractionalShare: z.coerce.number().positive(),
+  buildingId: z.string().uuid(),
+});
+
+const updateUnitSchema = z.object({
+  status: z.enum(UnitStatus).optional(),
+  type: z.enum(UnitType).optional(),
+  fractionalShare: z.coerce.number().positive().optional(),
+  ownerName: z.string().trim().min(1).max(160).optional(),
+  ownerEmail: z.string().trim().email().max(254).optional(),
+  ownerPhone: z.string().trim().min(3).max(40).optional(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'Ao menos um campo deve ser informado.',
+});
 
 // GET /api/v1/condominiums/:condoId/units
 router.get('/:condoId/units', requireAuth, tenantGuard, async (req, res) => {
@@ -33,13 +54,10 @@ router.post(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(createUnitSchema),
   async (req, res) => {
     const { condoId } = req.params;
     const { number, type, status, fractionalShare, buildingId } = req.body;
-
-    if (!number || !type || !status || fractionalShare === undefined || !buildingId) {
-      return res.status(400).json({ error: "Número, tipo, status, fração ideal e buildingId são obrigatórios." });
-    }
 
     try {
       const building = await prisma.building.findFirst({
@@ -55,7 +73,7 @@ router.post(
           number,
           type: type as UnitType,
           status: status as UnitStatus,
-          fractionalShare: parseFloat(fractionalShare),
+          fractionalShare,
           buildingId,
         },
       });
@@ -73,6 +91,7 @@ router.patch(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(updateUnitSchema),
   async (req, res) => {
     const { unitId } = req.params;
     const { status, type, fractionalShare, ownerName, ownerEmail, ownerPhone } = req.body;
@@ -90,7 +109,7 @@ router.patch(
       const updateData: any = {};
       if (status) updateData.status = status as UnitStatus;
       if (type) updateData.type = type as UnitType;
-      if (fractionalShare !== undefined) updateData.fractionalShare = parseFloat(fractionalShare);
+      if (fractionalShare !== undefined) updateData.fractionalShare = fractionalShare;
 
       const unit = await prisma.unit.update({
         where: { id: unitId },

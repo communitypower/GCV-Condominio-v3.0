@@ -1,9 +1,30 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole, BillingStatus } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const billingStatusSchema = z.enum(BillingStatus);
+const monthStringSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Competência deve estar no formato YYYY-MM.');
+
+const updateChargeStatusSchema = z.object({
+  status: billingStatusSchema,
+});
+
+const createChargeSchema = z.object({
+  unitId: z.string().uuid(),
+  monthString: monthStringSchema,
+  amount: z.coerce.number().positive(),
+  dueDate: z.coerce.date(),
+  description: z.string().trim().min(1).max(240),
+});
+
+const massGenerateSchema = z.object({
+  monthString: monthStringSchema,
+});
 
 // GET /api/v1/condominiums/:condoId/charges
 router.get('/:condoId/charges', requireAuth, tenantGuard, async (req: any, res) => {
@@ -61,13 +82,10 @@ router.patch(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.accountant]),
+  validateBody(updateChargeStatusSchema),
   async (req: any, res) => {
     const { chargeId } = req.params;
     const { status } = req.body;
-
-    if (!status) {
-      return res.status(400).json({ error: "Status é obrigatório." });
-    }
 
     try {
       const charge = await prisma.charge.findUnique({
@@ -122,13 +140,10 @@ router.post(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.accountant]),
+  validateBody(createChargeSchema),
   async (req, res) => {
     const { condoId } = req.params;
     const { unitId, monthString, amount, dueDate, description } = req.body;
-
-    if (!unitId || !monthString || amount === undefined || !dueDate || !description) {
-      return res.status(400).json({ error: "Unidade, competência, valor, vencimento e descrição são obrigatórios." });
-    }
 
     try {
       // Find or create the billing period for this month and condominium
@@ -147,14 +162,14 @@ router.post(
 
       // Generate a mock barcode and pix Qr code
       const barcode = '34191.79001 01043.513184 91020.150008 7 97130000' + Math.floor(amount * 100).toString().padStart(6, '0');
-      const pixQrCode = `00020101021226870014br.gov.bcb.pix2565pix-qr.gcvcondominio.com.br/cob/BIL${monthString.replace('-', '')}${unitId}520400005303986540${parseFloat(amount).toFixed(2)}5802BR5914GCVCONDOMINIO6009SAOPAULO62070503BIL${monthString.replace('-', '')}${unitId}`;
+      const pixQrCode = `00020101021226870014br.gov.bcb.pix2565pix-qr.gcvcondominio.com.br/cob/BIL${monthString.replace('-', '')}${unitId}520400005303986540${amount.toFixed(2)}5802BR5914GCVCONDOMINIO6009SAOPAULO62070503BIL${monthString.replace('-', '')}${unitId}`;
 
       const charge = await prisma.charge.create({
         data: {
           unitId,
           billingPeriodId: billingPeriod.id,
-          amount: parseFloat(amount),
-          dueDate: new Date(dueDate),
+          amount,
+          dueDate,
           status: BillingStatus.pending,
           barcode,
           pixQrCode,
@@ -179,13 +194,10 @@ router.post(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.accountant]),
+  validateBody(massGenerateSchema),
   async (req, res) => {
     const { condoId } = req.params;
     const { monthString } = req.body;
-
-    if (!monthString) {
-      return res.status(400).json({ error: "Competência é obrigatória." });
-    }
 
     try {
       // Find occupied or maintenance units
@@ -260,4 +272,3 @@ router.post(
 );
 
 export default router;
-

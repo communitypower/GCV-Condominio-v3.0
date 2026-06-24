@@ -1,9 +1,19 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole, RelationshipRole } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const createResidentSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  email: z.string().trim().email().max(254),
+  phone: z.string().trim().min(3).max(40),
+  unitId: z.string().uuid(),
+  role: z.enum(RelationshipRole),
+});
 
 // GET /api/v1/condominiums/:condoId/residents
 router.get('/:condoId/residents', requireAuth, tenantGuard, async (req, res) => {
@@ -31,13 +41,10 @@ router.post(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(createResidentSchema),
   async (req, res) => {
     const { condoId } = req.params;
     const { name, email, phone, unitId, role } = req.body;
-
-    if (!name || !email || !phone || !unitId || !role) {
-      return res.status(400).json({ error: "Nome, e-mail, telefone, unitId e papel de relacionamento são obrigatórios." });
-    }
 
     try {
       const unit = await prisma.unit.findFirst({

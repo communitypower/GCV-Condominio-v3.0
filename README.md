@@ -253,6 +253,8 @@ Exemplos:
 - `/api/v1/accounts`
 - `/api/gemini/chat`
 - `/health`
+- `/livez`
+- `/readyz`
 
 ## CI/CD
 
@@ -264,11 +266,12 @@ O workflow principal fica em:
 
 Fluxo atual:
 
-1. Pull requests e pushes em `main` executam install, lint e build.
-2. Tags `v*` disparam deploy para staging.
-3. Producao depende do job de staging e do GitHub Environment `production`.
-4. Imagens Docker sao publicadas em Artifact Registry.
-5. Cloud Run recebe os deploys de staging e producao.
+1. Pull requests e pushes em `main` executam install, audit, typecheck e build.
+2. O job `api-smoke` sobe PostgreSQL 16, aplica migrations, roda seed e executa smoke tests de API.
+3. O workflow de seguranca executa Gitleaks e CodeQL em PRs, pushes, tags `v*` e agenda semanal.
+4. Tags `v*` tambem passam pelos gates de CI.
+5. Deploy oficial de beta controlado deve ser feito via Railway, usando ambientes isolados.
+6. O workflow antigo de Cloud Run foi removido do caminho automatico para evitar deploy em plataforma divergente.
 
 ## Deploy
 
@@ -299,18 +302,17 @@ docker compose up --build
 O arquivo `railway.json` define:
 
 - builder via Dockerfile
-- `preDeployCommand`: `npx prisma migrate deploy`
+- `preDeployCommand`: `npm run db:migrate:deploy`
 - `startCommand`: `npm run start`
-- healthcheck em `/health`
+- healthcheck em `/readyz`
 
-### Cloud Run
+Ambientes oficiais para fechamento do beta:
 
-O pipeline GitHub Actions contem jobs para:
+- `dev`
+- `staging`
+- `production`
 
-- `gcv-app-staging`
-- `gcv-app-production`
-
-Antes de usar em producao real, confirme secrets, banco, permissoes IAM, migracoes e gates de seguranca.
+Consulte `docs/RAILWAY_OPERATIONS_RUNBOOK.md` antes de operar staging ou producao.
 
 ## Maturidade e Riscos Conhecidos
 
@@ -331,7 +333,8 @@ Consulte especialmente:
 - `docs/DEVOPS_PIPELINE_AND_OPERATIONS_PLAN.md`
 - `docs/SECURITY_REVIEW_AND_PENTEST_PLAN.md`
 - `docs/INCIDENT_RESPONSE_RUNBOOK.md`
-- `docs/STAGING_DEPLOYMENT_WALKTHROUGH.md`
+- `docs/RAILWAY_OPERATIONS_RUNBOOK.md`
+- `docs/PRODUCT_CLOSURE_PLAN.md`
 - `docs/adr/`
 
 ## Desenvolvimento
@@ -341,6 +344,8 @@ Recomendacoes para contribuicoes:
 - Use Node.js 24
 - Rode `npm run lint` antes de abrir PR
 - Rode `npm run build` antes de deploy
+- Rode `npm run check` antes de abrir PR quando possivel
+- Use `npm run test:api` apenas contra banco descartavel ou ambiente de teste seedado
 - Mantenha alteracoes pequenas e rastreaveis
 - Prefira migrations Prisma para mudancas persistentes de schema
 - Nao introduza dados reais em seeds, docs, screenshots ou testes

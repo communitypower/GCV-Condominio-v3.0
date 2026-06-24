@@ -1,9 +1,37 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole, MaintenanceStatus, MaintenanceCategory, MaintenancePriority } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const maintenanceCategorySchema = z.enum(MaintenanceCategory);
+const maintenancePrioritySchema = z.enum(MaintenancePriority);
+const maintenanceStatusSchema = z.enum(MaintenanceStatus);
+
+const createTicketSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  description: z.string().trim().min(1).max(5000),
+  category: maintenanceCategorySchema,
+  priority: maintenancePrioritySchema,
+  unitId: z.string().uuid().optional().nullable(),
+  estimatedCost: z.coerce.number().nonnegative().optional().nullable(),
+});
+
+const updateTicketSchema = z.object({
+  status: maintenanceStatusSchema.optional(),
+  assignedStaff: z.string().trim().min(1).max(160).optional().nullable(),
+  estimatedCost: z.coerce.number().nonnegative().optional().nullable(),
+  actualCost: z.coerce.number().nonnegative().optional().nullable(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'Ao menos um campo deve ser informado.',
+});
+
+const commentSchema = z.object({
+  comment: z.string().trim().min(1).max(2000),
+});
 
 // GET /api/v1/condominiums/:condoId/tickets
 router.get('/:condoId/tickets', requireAuth, tenantGuard, async (req: any, res) => {
@@ -54,13 +82,9 @@ router.get('/:condoId/tickets', requireAuth, tenantGuard, async (req: any, res) 
 });
 
 // POST /api/v1/condominiums/:condoId/tickets
-router.post('/:condoId/tickets', requireAuth, tenantGuard, async (req: any, res) => {
+router.post('/:condoId/tickets', requireAuth, tenantGuard, validateBody(createTicketSchema), async (req: any, res) => {
   const { condoId } = req.params;
   const { title, description, category, priority, unitId, estimatedCost } = req.body;
-
-  if (!title || !description || !category || !priority) {
-    return res.status(400).json({ error: "Título, descrição, categoria e prioridade são obrigatórios." });
-  }
 
   try {
     // If unitId is specified, verify it belongs to this condo
@@ -95,7 +119,7 @@ router.post('/:condoId/tickets', requireAuth, tenantGuard, async (req: any, res)
         category: category as MaintenanceCategory,
         priority: priority as MaintenancePriority,
         status: MaintenanceStatus.reported,
-        estimatedCost: estimatedCost ? parseFloat(estimatedCost) : null,
+        estimatedCost: estimatedCost ?? null,
       },
     });
 
@@ -112,6 +136,7 @@ router.patch(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(updateTicketSchema),
   async (req: any, res) => {
     const { ticketId } = req.params;
     const { status, assignedStaff, estimatedCost, actualCost } = req.body;
@@ -128,8 +153,8 @@ router.patch(
       const updateData: any = {};
       if (status) updateData.status = status as MaintenanceStatus;
       if (assignedStaff !== undefined) updateData.assignedStaff = assignedStaff;
-      if (estimatedCost !== undefined) updateData.estimatedCost = parseFloat(estimatedCost);
-      if (actualCost !== undefined) updateData.actualCost = parseFloat(actualCost);
+      if (estimatedCost !== undefined) updateData.estimatedCost = estimatedCost;
+      if (actualCost !== undefined) updateData.actualCost = actualCost;
 
       if (status && status === MaintenanceStatus.resolved) {
         updateData.resolvedAt = new Date();
@@ -161,13 +186,9 @@ router.patch(
 );
 
 // POST /api/v1/condominiums/:condoId/tickets/:ticketId/comments
-router.post('/:condoId/tickets/:ticketId/comments', requireAuth, tenantGuard, async (req: any, res) => {
+router.post('/:condoId/tickets/:ticketId/comments', requireAuth, tenantGuard, validateBody(commentSchema), async (req: any, res) => {
   const { ticketId } = req.params;
   const { comment } = req.body;
-
-  if (!comment) {
-    return res.status(400).json({ error: "Comentário é obrigatório." });
-  }
 
   try {
     const ticket = await prisma.maintenanceTicket.findUnique({

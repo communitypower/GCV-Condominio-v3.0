@@ -1,9 +1,17 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole } from '@prisma/client';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const createCondominiumSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  address: z.string().trim().min(1).max(240),
+  accountId: z.string().uuid(),
+});
 
 // GET /api/v1/condominiums
 router.get('/', requireAuth, async (req: any, res) => {
@@ -33,11 +41,8 @@ router.get('/', requireAuth, async (req: any, res) => {
 });
 
 // POST /api/v1/condominiums
-router.post('/', requireAuth, requireRole([PlatformRole.admin, PlatformRole.syndic]), async (req: any, res) => {
+router.post('/', requireAuth, requireRole([PlatformRole.admin, PlatformRole.syndic]), validateBody(createCondominiumSchema), async (req: any, res) => {
   const { name, address, accountId } = req.body;
-  if (!name || !address || !accountId) {
-    return res.status(400).json({ error: "Nome, endereço e accountId são obrigatórios." });
-  }
 
   const isAccountMember = req.user.memberships.some((m: any) => m.accountId === accountId);
   if (!isAccountMember) {

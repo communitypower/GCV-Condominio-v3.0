@@ -1,11 +1,21 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
 import path from 'path';
 import fs from 'fs';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const createDocumentSchema = z.object({
+  title: z.string().trim().min(1).max(180),
+  category: z.string().trim().min(1).max(80),
+  requiredRole: z.enum(PlatformRole).optional(),
+  unitId: z.string().uuid().optional().nullable(),
+  filePath: z.string().trim().min(1).max(500),
+});
 
 // GET /api/v1/condominiums/:condoId/documents
 router.get('/:condoId/documents', requireAuth, tenantGuard, async (req: any, res) => {
@@ -137,13 +147,10 @@ router.post(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(createDocumentSchema),
   async (req: any, res) => {
     const { condoId } = req.params;
     const { title, category, requiredRole, unitId, filePath } = req.body;
-
-    if (!title || !category || !filePath) {
-      return res.status(400).json({ error: "Título, categoria e caminho de arquivo são obrigatórios." });
-    }
 
     try {
       const document = await prisma.document.create({

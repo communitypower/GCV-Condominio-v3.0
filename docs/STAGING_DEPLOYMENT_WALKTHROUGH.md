@@ -1,5 +1,7 @@
 # GCV Condomínio - Staging Deployment Walkthrough
 
+> Historical note: this document records a previous GCP Cloud Run staging path. The current controlled-beta closure path uses Railway environments. See `docs/RAILWAY_OPERATIONS_RUNBOOK.md` and `docs/PRODUCT_CLOSURE_PLAN.md` before operating staging or production.
+
 This document records the configuration details, troubleshooting steps, and deployment parameters established during the Gate 3 SaaS Staging deployment.
 
 ---

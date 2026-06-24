@@ -4,9 +4,9 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "preDeployCommand": "npx prisma migrate deploy",
+    "preDeployCommand": "npm run db:migrate:deploy",
     "startCommand": "npm run start",
-    "healthcheckPath": "/health",
+    "healthcheckPath": "/readyz",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }

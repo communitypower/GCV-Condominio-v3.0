@@ -1,9 +1,15 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
+import { validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+const createBuildingSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+});
 
 // GET /api/v1/condominiums/:condoId/buildings
 router.get('/:condoId/buildings', requireAuth, tenantGuard, async (req, res) => {
@@ -25,12 +31,10 @@ router.post(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  validateBody(createBuildingSchema),
   async (req, res) => {
     const { condoId } = req.params;
     const { name } = req.body;
-    if (!name) {
-      return res.status(400).json({ error: "Nome do bloco/edifício é obrigatório." });
-    }
 
     try {
       const building = await prisma.building.create({
