@@ -217,6 +217,10 @@ async function runTests() {
 
     console.log("All GCV Operational Workflows tests completed with SUCCESS.");
   } finally {
+    await prisma.auditEvent.deleteMany({
+      where: { details: 'Login mock realizado em ambiente local/teste.' },
+    });
+
     if (ticketId) {
       await prisma.ticketComment.deleteMany({ where: { ticketId } });
       await prisma.ticketStatusHistory.deleteMany({ where: { ticketId } });

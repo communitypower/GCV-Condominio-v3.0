@@ -190,6 +190,10 @@ async function runTests() {
 
     console.log("All tests passed successfully!");
   } finally {
+    await prisma.auditEvent.deleteMany({
+      where: { details: 'Login mock realizado em ambiente local/teste.' },
+    });
+
     if (foreignCondoId) {
       await prisma.unit.deleteMany({ where: { building: { condominiumId: foreignCondoId } } });
       await prisma.building.deleteMany({ where: { condominiumId: foreignCondoId } });

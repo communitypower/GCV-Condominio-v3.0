@@ -137,6 +137,10 @@ async function runTests() {
 
     console.log("All Document ACL tests completed with SUCCESS.");
   } finally {
+    await prisma.auditEvent.deleteMany({
+      where: { details: 'Login mock realizado em ambiente local/teste.' },
+    });
+
     if (privateDocId) {
       await prisma.auditEvent.deleteMany({ where: { entity: 'Document', entityId: privateDocId } });
       await prisma.documentVersion.deleteMany({ where: { documentId: privateDocId } });

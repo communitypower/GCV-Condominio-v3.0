@@ -2,12 +2,22 @@ import assert from 'assert';
 import crypto from 'crypto';
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import { PrismaClient } from '@prisma/client';
+import { AuditAction, PrismaClient } from '@prisma/client';
 import authRouter from '../server/routes/auth';
 
 const prisma = new PrismaClient();
 const PORT = 3001;
 const BASE_URL = `http://localhost:${PORT}/api/v1/auth`;
+const AUTH_AUDIT_TEST_DETAILS = [
+  'Tentativa de login bloqueada pela allowlist beta.',
+  'Login por senha realizado com sucesso.',
+  'Tentativa de login Google sem pessoa ou usuário cadastrado.',
+  'Conta Google vinculada a novo usuário.',
+  'Login Google realizado com sucesso.',
+  'Conta Google vinculada ao usuário.',
+  'Conta Microsoft vinculada ao usuário.',
+  'Login Microsoft realizado com sucesso.',
+];
 
 // Generate RSA keys for signing mock JWTs
 const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
@@ -170,6 +180,9 @@ async function runTests() {
 
   try {
     console.log('\n--- Running OAuth flow tests ---\n');
+    await prisma.auditEvent.deleteMany({
+      where: { details: { in: AUTH_AUDIT_TEST_DETAILS } },
+    });
 
     const originalNodeEnv = process.env.NODE_ENV;
     const originalBetaAllowedEmails = process.env.BETA_ALLOWED_EMAILS;
@@ -193,6 +206,25 @@ async function runTests() {
       });
       assert.strictEqual(allowedLoginRes.status, 200, 'Allowlisted staging user should log in');
       assert.ok(allowedLoginRes.headers.get('set-cookie')?.includes('gcv_session'), 'Allowlisted login should set session cookie');
+
+      const [blockedAudit, allowedAudit] = await Promise.all([
+        prisma.auditEvent.findFirst({
+          where: {
+            userEmail: 'zelador@gcv.com.br',
+            action: AuditAction.auth_failed,
+            details: 'Tentativa de login bloqueada pela allowlist beta.',
+          },
+        }),
+        prisma.auditEvent.findFirst({
+          where: {
+            userEmail: 'sindico@gcv.com.br',
+            action: AuditAction.auth_login,
+            details: 'Login por senha realizado com sucesso.',
+          },
+        }),
+      ]);
+      assert.ok(blockedAudit, 'Blocked staging login should be audited');
+      assert.ok(allowedAudit, 'Allowed staging login should be audited');
     } finally {
       process.env.NODE_ENV = originalNodeEnv;
       if (originalBetaAllowedEmails === undefined) {
@@ -209,6 +241,7 @@ async function runTests() {
     // Clean up if leftover from previous aborted tests
     const leftoverUser = await prisma.user.findUnique({ where: { email: preRegisteredEmail } });
     if (leftoverUser) {
+      await prisma.auditEvent.deleteMany({ where: { userId: leftoverUser.id } });
       await prisma.oauthAccount.deleteMany({ where: { userId: leftoverUser.id } });
       await prisma.user.delete({ where: { id: leftoverUser.id } });
     }
@@ -408,15 +441,22 @@ async function runTests() {
     // Clean up test users & data
     const finalClean = await prisma.user.findUnique({ where: { email: preRegisteredEmail } });
     if (finalClean) {
+      await prisma.auditEvent.deleteMany({ where: { userId: finalClean.id } });
       await prisma.oauthAccount.deleteMany({ where: { userId: finalClean.id } });
       await prisma.user.delete({ where: { id: finalClean.id } });
     }
     await prisma.person.deleteMany({ where: { email: preRegisteredEmail } });
     // Clean up syndic links to restore seed state
     await prisma.oauthAccount.deleteMany({ where: { userId: syndicUser.id } });
+    await prisma.auditEvent.deleteMany({
+      where: { details: { in: AUTH_AUDIT_TEST_DETAILS } },
+    });
 
     console.log('\nAll OAuth flow tests completed successfully!\n');
   } finally {
+    await prisma.auditEvent.deleteMany({
+      where: { details: { in: AUTH_AUDIT_TEST_DETAILS } },
+    });
     await teardown();
   }
 }

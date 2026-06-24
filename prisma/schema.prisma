@@ -95,6 +95,7 @@ enum AuditAction {
   delete
   auth_login
   auth_logout
+  auth_failed
   export
   document_access
 }

@@ -236,3 +236,13 @@ Go requires:
 - No high/critical finding is open for auth, tenant isolation, documents, secrets, or migrations.
 
 No-go if any of these fail.
+
+## 10. Auth Audit Expectations
+
+Authentication events are written to tenant audit logs when a user can be associated with at least one account:
+
+- `auth_login`: password login, mock login outside production-like environments, Google login, Microsoft login, and OAuth account linking.
+- `auth_logout`: explicit logout with a valid session cookie.
+- `auth_failed`: failed password login for a known user, beta allowlist blocks for a known user, and OAuth attempts that can be mapped back to an existing user.
+
+Unknown e-mail attempts are rejected but are not stored in `AuditEvent` because the current audit table is account-scoped. Treat central security-event storage as a future hardening item before broader public signup.

@@ -10,6 +10,7 @@ Execution checkpoint:
 - Week 2 foundation started: HTTP security headers, rate limits, request ids, dependency audit script, explicit smoke/API test scripts, CI API smoke job, temporary API test cleanup, real cross-tenant negative smoke coverage, Zod validation for write routes, and security scanning workflow added.
 - Operations foundation started: Railway runbook added and legacy GCP operation docs marked as historical.
 - Week 3 foundation started: explicit migration verification script added, CI validates migrations on a clean database before seed/smoke tests, and Compose startup now applies versioned migrations before boot.
+- Auth hardening continued: beta allowlist now gates staging/production login paths, and auth login/logout/known failed-login/OAuth-linking events are written to tenant audit logs.
 - Remaining Week 2 work: review security scan findings when the GitHub workflow runs and keep expanding negative coverage as new protected routes are added.
 - Remaining Week 3 work: perform a real staging restore drill after Railway environments and backups are provisioned.
 - Local note: Gitleaks could not be run locally because Docker failed to pull from GHCR due to host credential configuration; the GitHub Actions workflow is the intended execution path.
@@ -87,7 +88,7 @@ Release rules:
 - Block mock login outside local/dev.
 - Use secure, signed, `HttpOnly` cookies in production-like environments.
 - Require `BETA_ALLOWED_EMAILS` in staging/production and block login/OAuth for users outside the allowlist.
-- Audit login, logout, failed login, and OAuth account linking.
+- Audit login, logout, known failed login attempts, and OAuth account linking.
 - Expand tenant isolation tests to cover account, condominium, unit, billing, documents, and audit routes.
 
 ### Database And Migrations

@@ -1,10 +1,16 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { AuditAction, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import * as openid from 'openid-client';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+type AuthAuditUser = {
+  id: string;
+  email: string;
+  memberships: { accountId: string }[];
+};
 
 function isProductionLike() {
   return process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
@@ -43,6 +49,45 @@ function setSessionCookie(res: any, userId: string) {
   });
 }
 
+async function writeAuthAudit(
+  req: any,
+  user: AuthAuditUser | null | undefined,
+  action: AuditAction,
+  details: string,
+  entity = 'User',
+  entityId?: string
+) {
+  if (!user) return;
+
+  const accountIds = [...new Set(user.memberships.map((membership) => membership.accountId).filter(Boolean))];
+  if (accountIds.length === 0) return;
+
+  await Promise.all(
+    accountIds.map((accountId) =>
+      prisma.auditEvent.create({
+        data: {
+          accountId,
+          userId: user.id,
+          userEmail: user.email,
+          action,
+          entity,
+          entityId: entityId || user.id,
+          details,
+          ipAddress: req.ip,
+        },
+      })
+    )
+  );
+}
+
+async function writeAuthFailureForEmail(req: any, email: string, details: string) {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { memberships: true },
+  });
+  await writeAuthAudit(req, user, AuditAction.auth_failed, details);
+}
+
 function renderUnauthorizedEmail(email: string) {
   const safeEmail = escapeHtml(email);
   return `
@@ -75,19 +120,23 @@ router.post('/login', async (req, res) => {
     }
 
     if (!user.passwordHash) {
+      await writeAuthAudit(req, user, AuditAction.auth_failed, 'Tentativa de login por senha para usuário sem senha local.');
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatch) {
+      await writeAuthAudit(req, user, AuditAction.auth_failed, 'Tentativa de login com senha inválida.');
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
 
     if (!isBetaAllowed(user.email)) {
+      await writeAuthAudit(req, user, AuditAction.auth_failed, 'Tentativa de login bloqueada pela allowlist beta.');
       return res.status(403).json({ error: "Usuário não habilitado para este ambiente." });
     }
 
     setSessionCookie(res, user.id);
+    await writeAuthAudit(req, user, AuditAction.auth_login, 'Login por senha realizado com sucesso.');
 
     res.json({
       message: "Autenticado com sucesso.",
@@ -128,6 +177,7 @@ router.post('/mock-login', async (req, res) => {
     }
 
     setSessionCookie(res, user.id);
+    await writeAuthAudit(req, user, AuditAction.auth_login, 'Login mock realizado em ambiente local/teste.');
 
     res.json({
       message: "Autenticado com sucesso via mock login.",
@@ -145,9 +195,25 @@ router.post('/mock-login', async (req, res) => {
 });
 
 // POST /api/v1/auth/logout
-router.post('/logout', (req, res) => {
-  res.clearCookie('gcv_session');
-  res.json({ message: "Desconectado com sucesso." });
+router.post('/logout', async (req, res) => {
+  const sessionUserId = req.signedCookies?.gcv_session;
+
+  try {
+    if (sessionUserId) {
+      const user = await prisma.user.findUnique({
+        where: { id: sessionUserId },
+        include: { memberships: true },
+      });
+      await writeAuthAudit(req, user, AuditAction.auth_logout, 'Logout realizado com sucesso.');
+    }
+
+    res.clearCookie('gcv_session');
+    res.json({ message: "Desconectado com sucesso." });
+  } catch (error) {
+    console.error("Logout Error:", error);
+    res.clearCookie('gcv_session');
+    res.status(500).json({ error: "Erro interno ao realizar logout." });
+  }
 });
 
 // GET /api/v1/auth/me
@@ -303,6 +369,7 @@ router.get('/google/callback', async (req, res) => {
     }
 
     if (!isBetaAllowed(email)) {
+      await writeAuthFailureForEmail(req, email, 'Tentativa de login Google bloqueada pela allowlist beta.');
       return res.status(403).send(renderUnauthorizedEmail(email));
     }
 
@@ -328,6 +395,7 @@ router.get('/google/callback', async (req, res) => {
 
       if (existingUser) {
         if (emailVerified !== true) {
+          await writeAuthAudit(req, existingUser, AuditAction.auth_failed, 'Tentativa de vínculo Google com e-mail não verificado.');
           throw new Error("E-mail do Google não verificado.");
         }
         // Link account
@@ -340,6 +408,7 @@ router.get('/google/callback', async (req, res) => {
           },
         });
         user = existingUser;
+        await writeAuthAudit(req, user, AuditAction.auth_login, 'Conta Google vinculada ao usuário.', 'OauthAccount', providerUserId);
       } else {
         // 3. Check if a Person is pre-registered
         const existingPerson = await prisma.person.findUnique({
@@ -347,6 +416,7 @@ router.get('/google/callback', async (req, res) => {
         });
 
         if (!existingPerson) {
+          await writeAuthFailureForEmail(req, email, 'Tentativa de login Google sem pessoa ou usuário cadastrado.');
           return res.status(403).send(renderUnauthorizedEmail(email));
         }
 
@@ -372,6 +442,7 @@ router.get('/google/callback', async (req, res) => {
           where: { id: newUser.id },
           include: { person: true, memberships: true },
         }) as any;
+        await writeAuthAudit(req, user, AuditAction.auth_login, 'Conta Google vinculada a novo usuário.', 'OauthAccount', providerUserId);
       }
     }
 
@@ -380,6 +451,7 @@ router.get('/google/callback', async (req, res) => {
     }
 
     setSessionCookie(res, user.id);
+    await writeAuthAudit(req, user, AuditAction.auth_login, 'Login Google realizado com sucesso.');
 
     const payloadUser = {
       id: user.id,
@@ -523,6 +595,7 @@ router.get('/microsoft/callback', async (req, res) => {
     }
 
     if (!isBetaAllowed(email)) {
+      await writeAuthFailureForEmail(req, email, 'Tentativa de login Microsoft bloqueada pela allowlist beta.');
       return res.status(403).send(renderUnauthorizedEmail(email));
     }
 
@@ -548,6 +621,7 @@ router.get('/microsoft/callback', async (req, res) => {
 
       if (existingUser) {
         if (emailVerified !== true) {
+          await writeAuthAudit(req, existingUser, AuditAction.auth_failed, 'Tentativa de vínculo Microsoft com e-mail não verificado.');
           throw new Error("E-mail da Microsoft não verificado.");
         }
         // Link account
@@ -560,6 +634,7 @@ router.get('/microsoft/callback', async (req, res) => {
           },
         });
         user = existingUser;
+        await writeAuthAudit(req, user, AuditAction.auth_login, 'Conta Microsoft vinculada ao usuário.', 'OauthAccount', providerUserId);
       } else {
         // 3. Check if a Person is pre-registered
         const existingPerson = await prisma.person.findUnique({
@@ -567,6 +642,7 @@ router.get('/microsoft/callback', async (req, res) => {
         });
 
         if (!existingPerson) {
+          await writeAuthFailureForEmail(req, email, 'Tentativa de login Microsoft sem pessoa ou usuário cadastrado.');
           return res.status(403).send(renderUnauthorizedEmail(email));
         }
 
@@ -592,6 +668,7 @@ router.get('/microsoft/callback', async (req, res) => {
           where: { id: newUser.id },
           include: { person: true, memberships: true },
         }) as any;
+        await writeAuthAudit(req, user, AuditAction.auth_login, 'Conta Microsoft vinculada a novo usuário.', 'OauthAccount', providerUserId);
       }
     }
 
@@ -600,6 +677,7 @@ router.get('/microsoft/callback', async (req, res) => {
     }
 
     setSessionCookie(res, user.id);
+    await writeAuthAudit(req, user, AuditAction.auth_login, 'Login Microsoft realizado com sucesso.');
 
     const payloadUser = {
       id: user.id,
