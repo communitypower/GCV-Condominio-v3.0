@@ -26,10 +26,20 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - APP_URL=http://localhost:3000
+      - SESSION_SECRET=${SESSION_SECRET:-gcv_local_compose_secret}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash}
+      - ENABLE_AI_ASSISTANT=${ENABLE_AI_ASSISTANT:-false}
       - ENABLE_GITHUB_INTEGRATION=${ENABLE_GITHUB_INTEGRATION:-false}
+      - ENABLE_DEMO_EXPORTS=${ENABLE_DEMO_EXPORTS:-false}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-local-google-client-id}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-local-google-client-secret}
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-local-microsoft-client-id}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET:-local-microsoft-client-secret}
+      - MICROSOFT_TENANT_ID=${MICROSOFT_TENANT_ID:-common}
       - DATABASE_URL=postgresql://gcv_user:gcv_password@db:5432/gcv_condominio?schema=public
+    command: sh -c "npm run db:migrate:deploy && npm run db:seed && npm run start"
     depends_on:
       db:
         condition: service_healthy

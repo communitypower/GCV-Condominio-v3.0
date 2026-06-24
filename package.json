@@ -16,6 +16,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:verify": "prisma migrate deploy && prisma migrate status && prisma migrate diff --from-url \"$DATABASE_URL\" --to-schema-datamodel prisma/schema.prisma --exit-code",
     "db:seed": "prisma db seed",
     "audit": "npm audit --audit-level=high",
     "check": "npm run lint && npm run build && npm run audit",

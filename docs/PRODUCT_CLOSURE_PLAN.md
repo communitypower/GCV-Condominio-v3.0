@@ -9,7 +9,9 @@ Execution checkpoint:
 - Week 1 foundation started: production startup separated from migrations, env validation added, Railway readiness aligned, and health endpoints added.
 - Week 2 foundation started: HTTP security headers, rate limits, request ids, dependency audit script, explicit smoke/API test scripts, CI API smoke job, temporary API test cleanup, real cross-tenant negative smoke coverage, Zod validation for write routes, and security scanning workflow added.
 - Operations foundation started: Railway runbook added and legacy GCP operation docs marked as historical.
+- Week 3 foundation started: explicit migration verification script added, CI validates migrations on a clean database before seed/smoke tests, and Compose startup now applies versioned migrations before boot.
 - Remaining Week 2 work: review security scan findings when the GitHub workflow runs and keep expanding negative coverage as new protected routes are added.
+- Remaining Week 3 work: perform a real staging restore drill after Railway environments and backups are provisioned.
 - Local note: Gitleaks could not be run locally because Docker failed to pull from GHCR due to host credential configuration; the GitHub Actions workflow is the intended execution path.
 
 ## 1. Executive Summary
@@ -144,6 +146,14 @@ Current test runner note:
 - Remove `db push` from all deployed paths.
 - Create migration and backup runbooks.
 - Perform a staging restore drill.
+
+Current migration safety note:
+
+- `npm run db:migrate:verify` runs `prisma migrate deploy`, `prisma migrate status`, and a Prisma diff from the database URL to `prisma/schema.prisma`.
+- The verification target must be a clean/disposable database or an environment already managed by Prisma Migrate, not an older local database created only with `db push`.
+- CI runs that verification against a clean PostgreSQL service before seed and API smoke tests.
+- Docker Compose applies versioned migrations before local container startup.
+- Railway uses `npm run db:migrate:deploy` as the pre-deploy command.
 
 ### Week 4: Staging Beta
 

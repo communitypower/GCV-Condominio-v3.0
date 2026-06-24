@@ -68,7 +68,10 @@ Before deployment:
 npm ci
 npm run check
 npm test
+npm run db:migrate:verify
 ```
+
+Run `db:migrate:verify` only against a clean/disposable database or an environment that already has Prisma Migrate history. Older local databases created with `prisma db push` should be recreated or baselined before using migrate deploy.
 
 Railway deployment settings:
 
@@ -100,10 +103,21 @@ Rules:
 Pre-production migration checklist:
 
 - Migration applies on a clean database in CI.
+- `npm run db:migrate:verify` has passed on the release commit.
 - Migration applies on staging.
 - App boots and `/readyz` returns 200 after migration.
 - Smoke tests pass.
 - Backup/restore procedure has been tested recently.
+
+Creating a schema change:
+
+```bash
+npx prisma migrate dev --name <short_change_name>
+npm run db:migrate:verify
+npm run build
+```
+
+Never edit an already-applied migration in `main`. Add a new forward migration instead.
 
 ## 5. Backup And Restore Drill
 
@@ -129,6 +143,20 @@ SELECT COUNT(*) FROM "AuditEvent";
 ```
 
 6. Record restore date, backup source, operator, validation result, and any data gap.
+
+Manual logical backup option for a pre-migration checkpoint:
+
+```bash
+pg_dump "$DATABASE_URL" --format=custom --no-owner --no-acl --file "gcv-backup-$(date +%Y%m%d-%H%M%S).dump"
+```
+
+Restore that dump into a disposable recovery database first:
+
+```bash
+pg_restore --dbname "$RECOVERY_DATABASE_URL" --clean --if-exists --no-owner --no-acl "gcv-backup-YYYYMMDD-HHMMSS.dump"
+```
+
+Only point an app at the restored database after validating row counts and `/readyz`.
 
 ## 6. Rollback
 

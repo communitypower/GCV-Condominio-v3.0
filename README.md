@@ -55,8 +55,9 @@ O projeto combina uma aplicacao React/Vite com API Express, PostgreSQL via Prism
 | Ambiente | Status | Finalidade |
 | --- | --- | --- |
 | Local development | Funcional | Desenvolvimento diario com Docker Compose e PostgreSQL local |
-| Staging | Configurado | Validacao em Cloud Run antes de producao |
-| Production | Configurado, nao totalmente liberado | Deploy controlado por tag e GitHub Environment |
+| Dev | Configurado | Integracao continua com dados sinteticos |
+| Staging | Configurado | Ensaio de producao com dados sinteticos ou anonimizados |
+| Production | Configurado, nao totalmente liberado | Beta controlado com Railway e aprovacao manual |
 
 O codigo diferencia runtime de desenvolvimento e producao por `NODE_ENV`:
 
@@ -187,8 +188,12 @@ Essas credenciais sao apenas para desenvolvimento e demonstracao.
 ```bash
 npm run dev      # Inicia Express + Vite middleware
 npm run build    # Gera frontend, server bundle e seed bundle
-npm run start    # Aplica Prisma db push, seed e inicia dist/server.cjs
+npm run start    # Inicia dist/server.cjs sem aplicar migrations
+npm run start:local # Aplica db push, seed e inicia dist/server.cjs
 npm run lint     # Typecheck TypeScript
+npm run check    # Typecheck, build e audit de dependencias
+npm test         # Roda harness de OAuth
+npm run test:api # Roda smoke tests de API contra BASE_URL
 npm run clean    # Remove artefatos de build
 ```
 
@@ -206,9 +211,12 @@ Comandos uteis:
 npx prisma generate
 npx prisma db push
 npx prisma migrate deploy
+npm run db:migrate:verify
 npx prisma db seed
 npx prisma studio
 ```
+
+Use `db push` somente em desenvolvimento local. Em CI, staging e production, use migrations versionadas com `npm run db:migrate:deploy`; o gate `npm run db:migrate:verify` aplica as migrations, checa o status e compara o banco resultante com `prisma/schema.prisma`. Rode esse gate contra banco descartavel/limpo ou contra um ambiente que ja seja gerenciado por Prisma Migrate.
 
 O Compose local usa:
 
@@ -267,7 +275,7 @@ O workflow principal fica em:
 Fluxo atual:
 
 1. Pull requests e pushes em `main` executam install, audit, typecheck e build.
-2. O job `api-smoke` sobe PostgreSQL 16, aplica migrations, roda seed e executa smoke tests de API.
+2. O job `api-smoke` sobe PostgreSQL 16, valida migrations em banco limpo, roda seed e executa smoke tests de API.
 3. O workflow de seguranca executa Gitleaks e CodeQL em PRs, pushes, tags `v*` e agenda semanal.
 4. Tags `v*` tambem passam pelos gates de CI.
 5. Deploy oficial de beta controlado deve ser feito via Railway, usando ambientes isolados.
@@ -296,6 +304,8 @@ Para subir banco e app containerizado:
 ```bash
 docker compose up --build
 ```
+
+O servico `app` do Compose aplica migrations versionadas e seed antes do start. Ele usa valores locais seguros para OAuth e feature flags quando essas variaveis nao existem no `.env`.
 
 ### Railway
 
