@@ -14,6 +14,7 @@ Execution checkpoint:
 - AI/export hardening started: AI, GitHub/Gist, and demo export endpoints require an authenticated session, enforce feature flags server-side, and write audit events for blocked or attempted use.
 - Browser security hardening continued: staging/production block unsafe cross-origin requests with an Origin/APP_URL CSRF guard.
 - Release closure artifacts started: changelog, beta go/no-go checklist, and logical backup/restore helper scripts added.
+- Local restore drill passed with Docker PostgreSQL recovery database and recorded in `docs/RESTORE_DRILL_LOG.md`.
 - Remaining Week 2 work: review security scan findings when the GitHub workflow runs and keep expanding negative coverage as new protected routes are added.
 - Remaining Week 3 work: perform a real staging restore drill after Railway environments and backups are provisioned.
 - Local note: Gitleaks could not be run locally because Docker failed to pull from GHCR due to host credential configuration; the GitHub Actions workflow is the intended execution path.
@@ -163,6 +164,7 @@ Current migration safety note:
 - Railway uses `npm run db:migrate:deploy` as the pre-deploy command.
 - `scripts/db_backup.sh` creates a custom-format logical PostgreSQL backup from `DATABASE_URL`.
 - `scripts/db_restore_verify.sh` restores a dump into `RECOVERY_DATABASE_URL` and prints core row counts for validation.
+- `docs/RESTORE_DRILL_LOG.md` records restore drill evidence; Railway staging restore remains required before real data.
 
 ### Week 4: Staging Beta
 

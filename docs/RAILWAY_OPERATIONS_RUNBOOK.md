@@ -148,6 +148,8 @@ SELECT COUNT(*) FROM "AuditEvent";
 
 6. Record restore date, backup source, operator, validation result, and any data gap.
 
+Record drills in `docs/RESTORE_DRILL_LOG.md`.
+
 Manual logical backup option for a pre-migration checkpoint:
 
 ```bash

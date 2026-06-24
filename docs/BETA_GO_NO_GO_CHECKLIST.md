@@ -36,6 +36,7 @@ Status: required before `v0.1.0-beta.1` production beta.
 - [ ] Restored database passes `/readyz`.
 - [ ] Restored row counts are recorded for `User`, `Condominium`, `Membership`, and `AuditEvent`.
 - [ ] Restore operator, date, source backup, and validation result are recorded.
+- [ ] `docs/RESTORE_DRILL_LOG.md` includes the staging or production-beta restore evidence.
 
 ## Production Beta
 

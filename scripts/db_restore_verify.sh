@@ -13,15 +13,21 @@ fi
 
 backup_file="$1"
 
+normalize_pg_url() {
+  node -e 'const url = new URL(process.argv[1]); url.searchParams.delete("schema"); console.log(url.toString());' "$1"
+}
+
+recovery_database_url="$(normalize_pg_url "$RECOVERY_DATABASE_URL")"
+
 pg_restore \
-  --dbname "$RECOVERY_DATABASE_URL" \
+  --dbname "$recovery_database_url" \
   --clean \
   --if-exists \
   --no-owner \
   --no-acl \
   "$backup_file"
 
-psql "$RECOVERY_DATABASE_URL" <<'SQL'
+psql "$recovery_database_url" <<'SQL'
 SELECT 'User' AS table_name, COUNT(*) AS row_count FROM "User"
 UNION ALL
 SELECT 'Condominium' AS table_name, COUNT(*) AS row_count FROM "Condominium"
