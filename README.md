@@ -267,6 +267,7 @@ Exemplos:
 - `/health`
 - `/livez`
 - `/readyz`
+- `/metrics`
 
 ## CI/CD
 

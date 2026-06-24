@@ -28,6 +28,8 @@ const ENVIRONMENT = process.env.NODE_ENV || "development";
 const isProductionLike = ENVIRONMENT === "production" || ENVIRONMENT === "staging";
 const shouldServeStatic = isProductionLike || ENVIRONMENT === "test";
 const PORT = parseInt(process.env.PORT || "3000", 10);
+const httpRequestCounts = new Map<string, number>();
+const httpRequestDurationMs = new Map<string, number>();
 
 function assertRequiredEnv() {
   const required = ["DATABASE_URL"];
@@ -78,6 +80,11 @@ app.use((req, res, next) => {
 
   const startedAt = Date.now();
   res.on("finish", () => {
+    const latencyMs = Date.now() - startedAt;
+    const metricKey = `${req.method}|${res.statusCode}`;
+    httpRequestCounts.set(metricKey, (httpRequestCounts.get(metricKey) || 0) + 1);
+    httpRequestDurationMs.set(metricKey, (httpRequestDurationMs.get(metricKey) || 0) + latencyMs);
+
     console.log(JSON.stringify({
       level: "info",
       event: "http_request",
@@ -86,7 +93,7 @@ app.use((req, res, next) => {
       method: req.method,
       path: req.path,
       status: res.statusCode,
-      latencyMs: Date.now() - startedAt,
+      latencyMs,
     }));
   });
 
@@ -174,6 +181,43 @@ app.get("/readyz", async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+app.get("/metrics", (req, res) => {
+  const lines = [
+    "# HELP gcv_process_uptime_seconds Process uptime in seconds.",
+    "# TYPE gcv_process_uptime_seconds gauge",
+    `gcv_process_uptime_seconds ${process.uptime().toFixed(3)}`,
+    "# HELP gcv_http_requests_total Total HTTP requests by method and status.",
+    "# TYPE gcv_http_requests_total counter",
+  ];
+
+  for (const [key, count] of httpRequestCounts.entries()) {
+    const [method, status] = key.split("|");
+    lines.push(`gcv_http_requests_total{method="${method}",status="${status}"} ${count}`);
+  }
+
+  lines.push(
+    "# HELP gcv_http_request_duration_ms_sum Total HTTP request duration in milliseconds by method and status.",
+    "# TYPE gcv_http_request_duration_ms_sum counter"
+  );
+
+  for (const [key, duration] of httpRequestDurationMs.entries()) {
+    const [method, status] = key.split("|");
+    lines.push(`gcv_http_request_duration_ms_sum{method="${method}",status="${status}"} ${duration}`);
+  }
+
+  lines.push(
+    "# HELP gcv_http_request_duration_ms_count HTTP request duration sample count by method and status.",
+    "# TYPE gcv_http_request_duration_ms_count counter"
+  );
+
+  for (const [key, count] of httpRequestCounts.entries()) {
+    const [method, status] = key.split("|");
+    lines.push(`gcv_http_request_duration_ms_count{method="${method}",status="${status}"} ${count}`);
+  }
+
+  res.type("text/plain").send(`${lines.join("\n")}\n`);
 });
 
 type FeatureName = "AI_ASSISTANT" | "GITHUB_INTEGRATION" | "DEMO_EXPORTS";

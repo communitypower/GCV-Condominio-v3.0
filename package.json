@@ -23,11 +23,12 @@
     "test": "npm run test:oauth && npm run test:csrf",
     "test:oauth": "TMPDIR=/tmp tsx tests/oauth_flows.ts",
     "test:csrf": "TMPDIR=/tmp tsx tests/csrf_guard.ts",
-    "test:api": "npm run test:api:auth && npm run test:api:documents && npm run test:api:operations && npm run test:api:flags",
+    "test:api": "npm run test:api:auth && npm run test:api:documents && npm run test:api:operations && npm run test:api:flags && npm run test:api:observability",
     "test:api:auth": "TMPDIR=/tmp tsx tests/auth_tenant_isolation.ts",
     "test:api:documents": "TMPDIR=/tmp tsx tests/document_acl.ts",
     "test:api:operations": "TMPDIR=/tmp tsx tests/operational_workflows.ts",
     "test:api:flags": "TMPDIR=/tmp tsx tests/feature_flags.ts",
+    "test:api:observability": "TMPDIR=/tmp tsx tests/observability.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

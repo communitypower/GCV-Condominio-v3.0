@@ -13,6 +13,7 @@ Execution checkpoint:
 - Auth hardening continued: beta allowlist now gates staging/production login paths, and auth login/logout/known failed-login/OAuth-linking events are written to tenant audit logs.
 - AI/export hardening started: AI, GitHub/Gist, and demo export endpoints require an authenticated session, enforce feature flags server-side, and write audit events for blocked or attempted use.
 - Browser security hardening continued: staging/production block unsafe cross-origin requests with an Origin/APP_URL CSRF guard.
+- Observability foundation added: `/metrics` exposes process uptime and HTTP request counters/duration totals for external scraping.
 - Release closure artifacts started: changelog, beta go/no-go checklist, and logical backup/restore helper scripts added.
 - Local restore drill passed with Docker PostgreSQL recovery database and recorded in `docs/RESTORE_DRILL_LOG.md`.
 - Maintenance automation added: Dependabot covers npm and GitHub Actions, and the PR template captures validation/risk gates.
@@ -119,6 +120,7 @@ Release rules:
 - Add CSRF/origin protection for cookie-authenticated unsafe requests in production-like environments.
 - Remove framework fingerprinting headers.
 - Add structured logs with request id, environment, route, status, latency, user id, and tenant id when available.
+- Add scrapeable runtime metrics for uptime and HTTP request volume/latency.
 - Sanitize PII/secrets from logs.
 - Add `npm audit --audit-level=high`, secret scanning, and SAST to CI.
 - Add dependency update automation for npm and GitHub Actions.

@@ -89,10 +89,11 @@ Release order:
 1. Merge PR into `main`.
 2. Let Railway deploy `dev`.
 3. Validate `/health`, `/livez`, `/readyz`.
-4. Promote or redeploy the same commit to `staging`.
-5. Run API smoke tests against staging.
-6. Create release tag `v0.x.y`.
-7. Deploy/promote to `production` only after the beta checklist passes.
+4. Validate `/metrics` is reachable by the chosen monitoring path.
+5. Promote or redeploy the same commit to `staging`.
+6. Run API smoke tests against staging.
+7. Create release tag `v0.x.y`.
+8. Deploy/promote to `production` only after the beta checklist passes.
 
 ## 4. Migration Safety
 
