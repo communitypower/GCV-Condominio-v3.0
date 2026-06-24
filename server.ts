@@ -3,7 +3,7 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-import { PrismaClient } from "@prisma/client";
+import { AuditAction, PrismaClient } from "@prisma/client";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { randomUUID } from "crypto";
@@ -18,6 +18,7 @@ import billingRouter from "./server/routes/billing";
 import equipmentRouter from "./server/routes/equipment";
 import documentsRouter from "./server/routes/documents";
 import auditRouter from "./server/routes/audit";
+import { requireAuth } from "./server/middleware/auth";
 
 dotenv.config();
 
@@ -170,10 +171,42 @@ app.get("/readyz", async (req, res) => {
   }
 });
 
+type FeatureName = "AI_ASSISTANT" | "GITHUB_INTEGRATION" | "DEMO_EXPORTS";
+
+async function auditFeatureAttempt(req: any, feature: FeatureName, details: string, entityId?: string) {
+  const user = req.user;
+  if (!user?.memberships?.length) return;
+
+  const accountIds: string[] = [...new Set(user.memberships.map((membership: any) => membership.accountId).filter(Boolean) as string[])];
+  await Promise.all(accountIds.map((accountId) =>
+    prisma.auditEvent.create({
+      data: {
+        accountId,
+        userId: user.id,
+        userEmail: user.email,
+        action: AuditAction.export,
+        entity: feature,
+        entityId,
+        details,
+        ipAddress: req.ip,
+      },
+    })
+  ));
+}
+
 // Middleware to restrict GitHub integration
-const checkGithubIntegration = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+const checkGithubIntegration = async (req: any, res: express.Response, next: express.NextFunction) => {
   if (process.env.ENABLE_GITHUB_INTEGRATION !== "true") {
+    await auditFeatureAttempt(req, "GITHUB_INTEGRATION", "Tentativa bloqueada: integração GitHub desabilitada.");
     return res.status(403).json({ error: "Integração com GitHub desabilitada neste ambiente." });
+  }
+  next();
+};
+
+const checkDemoExports = async (req: any, res: express.Response, next: express.NextFunction) => {
+  if (process.env.ENABLE_DEMO_EXPORTS !== "true") {
+    await auditFeatureAttempt(req, "DEMO_EXPORTS", "Tentativa bloqueada: exportações demo desabilitadas.");
+    return res.status(403).json({ error: "Exportações demo desabilitadas neste ambiente." });
   }
   next();
 };
@@ -199,13 +232,15 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 // Endpoint to interact with Gemini
-app.post("/api/gemini/chat", sensitiveLimiter, async (req, res) => {
+app.post("/api/gemini/chat", sensitiveLimiter, requireAuth, async (req: any, res) => {
   try {
     if (process.env.ENABLE_AI_ASSISTANT !== "true") {
+      await auditFeatureAttempt(req, "AI_ASSISTANT", "Tentativa bloqueada: assistente de IA desabilitado.");
       return res.status(403).json({ error: "Assistente de IA desabilitado neste ambiente." });
     }
 
     const { prompt, contextData } = req.body;
+    await auditFeatureAttempt(req, "AI_ASSISTANT", "Consulta enviada ao assistente de IA.");
     const ai = getGeminiClient();
 
     const edificioNome = contextData?.edificioNome || "Condomínio Bella Vista Premium";
@@ -241,7 +276,7 @@ Instruções importantes:
 });
 
 // GET /api/auth/github/url
-app.get("/api/auth/github/url", checkGithubIntegration, (req, res) => {
+app.get("/api/auth/github/url", sensitiveLimiter, requireAuth, checkGithubIntegration, async (req: any, res) => {
   const redirectUri = (req.query.redirectUri as string) || `${req.protocol}://${req.get("host")}/auth/callback`;
   const clientId = process.env.GITHUB_CLIENT_ID || process.env.CLIENT_ID;
 
@@ -256,6 +291,7 @@ app.get("/api/auth/github/url", checkGithubIntegration, (req, res) => {
     state: Math.random().toString(36).substring(7),
   });
 
+  await auditFeatureAttempt(req, "GITHUB_INTEGRATION", "URL de OAuth GitHub gerada.");
   res.json({ url: `https://github.com/login/oauth/authorize?${params.toString()}` });
 });
 
@@ -362,12 +398,14 @@ app.get("/auth/callback", checkGithubIntegration, callbackHandler);
 app.get("/auth/callback/", checkGithubIntegration, callbackHandler);
 
 // POST /api/github/create-gist
-app.post("/api/github/create-gist", sensitiveLimiter, checkGithubIntegration, async (req, res) => {
+app.post("/api/github/create-gist", sensitiveLimiter, requireAuth, checkGithubIntegration, async (req: any, res) => {
   const { token, filename, content, description } = req.body;
   if (!token) {
+    await auditFeatureAttempt(req, "GITHUB_INTEGRATION", "Tentativa de criação de Gist sem token GitHub.");
     return res.status(401).json({ error: "Não autorizado: token ausente." });
   }
   try {
+    await auditFeatureAttempt(req, "GITHUB_INTEGRATION", "Tentativa de criação de Gist privado.", filename);
     const response = await fetch("https://api.github.com/gists", {
       method: "POST",
       headers: {
@@ -397,12 +435,14 @@ app.post("/api/github/create-gist", sensitiveLimiter, checkGithubIntegration, as
 });
 
 // GET /api/github/repos
-app.get("/api/github/repos", checkGithubIntegration, async (req, res) => {
+app.get("/api/github/repos", sensitiveLimiter, requireAuth, checkGithubIntegration, async (req: any, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
+    await auditFeatureAttempt(req, "GITHUB_INTEGRATION", "Tentativa de listar repositórios sem token GitHub.");
     return res.status(401).json({ error: "Token ausente" });
   }
   try {
+    await auditFeatureAttempt(req, "GITHUB_INTEGRATION", "Listagem de repositórios GitHub solicitada.");
     const response = await fetch("https://api.github.com/user/repos?sort=updated&per_page=10", {
       headers: {
         Authorization: authHeader,
@@ -415,6 +455,31 @@ app.get("/api/github/repos", checkGithubIntegration, async (req, res) => {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get("/api/demo/github-profile", sensitiveLimiter, requireAuth, checkDemoExports, async (req: any, res) => {
+  await auditFeatureAttempt(req, "DEMO_EXPORTS", "Perfil demo GitHub solicitado.");
+  res.json({
+    token: "demo_token_gcv_active_session",
+    profile: {
+      username: "gcv-demo",
+      name: "GCV Demo",
+      avatarUrl: "https://avatars.githubusercontent.com/u/583231?v=4",
+      profileUrl: "https://github.com/gcv-demo",
+      email: "",
+      publicRepos: 5,
+      followers: 0,
+      isDemo: true,
+    },
+  });
+});
+
+app.post("/api/demo/create-gist", sensitiveLimiter, requireAuth, checkDemoExports, async (req: any, res) => {
+  await auditFeatureAttempt(req, "DEMO_EXPORTS", "Gist demo simulado gerado.");
+  res.json({
+    url: "https://gist.github.com/gcv-demo/demo-gist-created-for-condominium-reports",
+    id: "demo-gist-created-for-condominium-reports",
+  });
 });
 
 // Fallback for unmatched API routes

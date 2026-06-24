@@ -278,10 +278,11 @@ Fluxo atual:
 
 1. Pull requests e pushes em `main` executam install, audit, typecheck e build.
 2. O job `api-smoke` sobe PostgreSQL 16, valida migrations em banco limpo, roda seed e executa smoke tests de API.
-3. O workflow de seguranca executa Gitleaks e CodeQL em PRs, pushes, tags `v*` e agenda semanal.
-4. Tags `v*` tambem passam pelos gates de CI.
-5. Deploy oficial de beta controlado deve ser feito via Railway, usando ambientes isolados.
-6. O workflow antigo de Cloud Run foi removido do caminho automatico para evitar deploy em plataforma divergente.
+3. Os smoke tests cobrem auth/tenant isolation, documentos, fluxos operacionais e flags de IA/GitHub/demo.
+4. O workflow de seguranca executa Gitleaks e CodeQL em PRs, pushes, tags `v*` e agenda semanal.
+5. Tags `v*` tambem passam pelos gates de CI.
+6. Deploy oficial de beta controlado deve ser feito via Railway, usando ambientes isolados.
+7. O workflow antigo de Cloud Run foi removido do caminho automatico para evitar deploy em plataforma divergente.
 
 ## Deploy
 

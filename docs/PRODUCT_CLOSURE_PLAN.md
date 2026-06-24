@@ -11,6 +11,7 @@ Execution checkpoint:
 - Operations foundation started: Railway runbook added and legacy GCP operation docs marked as historical.
 - Week 3 foundation started: explicit migration verification script added, CI validates migrations on a clean database before seed/smoke tests, and Compose startup now applies versioned migrations before boot.
 - Auth hardening continued: beta allowlist now gates staging/production login paths, and auth login/logout/known failed-login/OAuth-linking events are written to tenant audit logs.
+- AI/export hardening started: AI, GitHub/Gist, and demo export endpoints require an authenticated session, enforce feature flags server-side, and write audit events for blocked or attempted use.
 - Remaining Week 2 work: review security scan findings when the GitHub workflow runs and keep expanding negative coverage as new protected routes are added.
 - Remaining Week 3 work: perform a real staging restore drill after Railway environments and backups are provisioned.
 - Local note: Gitleaks could not be run locally because Docker failed to pull from GHCR due to host credential configuration; the GitHub Actions workflow is the intended execution path.
@@ -102,9 +103,9 @@ Release rules:
 
 ### AI, GitHub, And Demo Controls
 
-- Gate Gemini with `ENABLE_AI_ASSISTANT`.
-- Gate GitHub/Gist with `ENABLE_GITHUB_INTEGRATION`.
-- Gate demo exports with `ENABLE_DEMO_EXPORTS`.
+- Gate Gemini with `ENABLE_AI_ASSISTANT` on authenticated backend routes.
+- Gate GitHub/Gist with `ENABLE_GITHUB_INTEGRATION` on authenticated backend routes.
+- Gate demo exports with `ENABLE_DEMO_EXPORTS` on authenticated backend routes.
 - Disable AI/export for tenants containing real data until LGPD review is complete.
 - Audit every AI/export attempt.
 
@@ -141,6 +142,7 @@ Current test runner note:
 - CI starts a seeded test server on `http://localhost:3200` and runs OAuth plus API smoke tests against a fresh PostgreSQL service.
 - `NODE_ENV=test` serves the built `dist` bundle instead of Vite middleware to keep API smoke runs stable.
 - API smoke scripts create temporary records and clean them up, but CI still runs them against fresh/disposable data.
+- Feature flag smoke tests assert disabled AI, GitHub, and demo export endpoints return 403 for authenticated users and record audit events.
 
 ### Week 3: Persistence And Migration Safety
 

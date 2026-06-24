@@ -141,18 +141,22 @@ export default function GitHubIntegration({
   };
 
   // Demo connection to play with features instantly if environment variables are not set in the container
-  const handleConnectDemo = () => {
-    const demoProfile = {
-      username: 'cassianomarins',
-      name: 'Cassiano Marins',
-      avatarUrl: 'https://avatars.githubusercontent.com/u/14833211?v=4',
-      profileUrl: 'https://github.com/cassianomarins',
-      email: 'cassianomarins@gmail.com',
-      publicRepos: 42,
-      followers: 128,
-      isDemo: true
-    };
-    onConnectSuccess('demo_token_gcv_active_session', demoProfile);
+  const handleConnectDemo = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/demo/github-profile');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Conexão demo indisponível neste ambiente.');
+      }
+
+      const data = await response.json();
+      onConnectSuccess(data.token, data.profile);
+    } catch (err: any) {
+      alert(`Acesso demo indisponível:\n\n${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Listen for message from popup
@@ -221,10 +225,26 @@ ${JSON.stringify(condoData.logs.slice(0, 5), null, 2)}
   const publishToGist = async () => {
     if (githubProfile?.isDemo) {
       setGistLoading(true);
-      setTimeout(() => {
-        setGistUrl("https://gist.github.com/cassianomarins/demo_gist_created_for_condominium_reports");
+      try {
+        const response = await fetch('/api/demo/create-gist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: `relatorio-gcv-${condoData.activeBuildingName.toLowerCase().replace(/\s+/g, '-')}.md`,
+            content: generateMarkdownReport(),
+          }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Exportação demo indisponível neste ambiente.');
+        }
+        const data = await response.json();
+        setGistUrl(data.url);
+      } catch (err: any) {
+        alert(`Falha ao gerar o Gist demo: ${err.message}`);
+      } finally {
         setGistLoading(false);
-      }, 1500);
+      }
       return;
     }
 

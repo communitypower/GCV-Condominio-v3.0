@@ -61,6 +61,7 @@ Feature flags:
 - Keep `ENABLE_AI_ASSISTANT=false` for real-data tenants until LGPD/privacy review.
 - Keep `ENABLE_GITHUB_INTEGRATION=false` for production unless explicitly approved.
 - Keep `ENABLE_DEMO_EXPORTS=false` for real-data tenants.
+- These flags are enforced server-side on authenticated endpoints and blocked attempts are written to tenant audit logs.
 
 ## 3. Deployment Flow
 
