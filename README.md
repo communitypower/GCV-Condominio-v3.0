@@ -368,6 +368,7 @@ Consulte especialmente:
 - `docs/INCIDENT_RESPONSE_RUNBOOK.md`
 - `docs/RAILWAY_OPERATIONS_RUNBOOK.md`
 - `docs/PRODUCT_CLOSURE_PLAN.md`
+- `docs/PRODUCT_CLOSURE_STATUS.md`
 - `docs/BETA_GO_NO_GO_CHECKLIST.md`
 - `docs/RESTORE_DRILL_LOG.md`
 - `docs/adr/`

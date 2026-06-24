@@ -17,6 +17,7 @@ Execution checkpoint:
 - Release closure artifacts started: changelog, beta go/no-go checklist, and logical backup/restore helper scripts added.
 - Local restore drill passed with Docker PostgreSQL recovery database and recorded in `docs/RESTORE_DRILL_LOG.md`.
 - Maintenance automation added: Dependabot covers npm and GitHub Actions, and the PR template captures validation/risk gates.
+- Local/codebase execution status recorded in `docs/PRODUCT_CLOSURE_STATUS.md`; remaining work is external environment validation.
 - Remaining Week 2 work: review security scan findings when the GitHub workflow runs and keep expanding negative coverage as new protected routes are added.
 - Remaining Week 3 work: perform a real staging restore drill after Railway environments and backups are provisioned.
 - Local note: Gitleaks could not be run locally because Docker failed to pull from GHCR due to host credential configuration; the GitHub Actions workflow is the intended execution path.
