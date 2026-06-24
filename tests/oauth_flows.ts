@@ -192,6 +192,13 @@ async function runTests() {
       process.env.NODE_ENV = 'staging';
       process.env.BETA_ALLOWED_EMAILS = 'sindico@gcv.com.br';
 
+      const mockLoginRes = await fetch(`${BASE_URL}/mock-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'sindico@gcv.com.br' }),
+      });
+      assert.strictEqual(mockLoginRes.status, 403, 'Mock login should be blocked in staging');
+
       const blockedLoginRes = await fetch(`${BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
