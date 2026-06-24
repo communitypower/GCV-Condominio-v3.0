@@ -44,6 +44,7 @@ O projeto combina uma aplicacao React/Vite com API Express, PostgreSQL via Prism
 |-- tests/                  # Testes/roteiros de validacao
 |-- docs/                   # Planos, ADRs, seguranca e operacao
 |-- scripts/                # Scripts auxiliares
+|-- CHANGELOG.md            # Notas de release
 |-- Dockerfile              # Build multi-stage para producao
 |-- docker-compose.yml      # PostgreSQL local e app containerizado
 |-- railway.json            # Configuracao Railway
@@ -327,6 +328,23 @@ Ambientes oficiais para fechamento do beta:
 - `production`
 
 Consulte `docs/RAILWAY_OPERATIONS_RUNBOOK.md` antes de operar staging ou producao.
+Use `docs/BETA_GO_NO_GO_CHECKLIST.md` antes de promover qualquer tag beta.
+
+## Backup e Restore
+
+Backup logico manual:
+
+```bash
+DATABASE_URL="postgresql://..." scripts/db_backup.sh
+```
+
+Restore em banco descartavel de recuperacao:
+
+```bash
+RECOVERY_DATABASE_URL="postgresql://..." scripts/db_restore_verify.sh backups/gcv-backup-YYYYMMDD-HHMMSS.dump
+```
+
+Nunca restaure diretamente sobre producao sem validar primeiro em banco de recuperacao.
 
 ## Maturidade e Riscos Conhecidos
 
@@ -349,6 +367,7 @@ Consulte especialmente:
 - `docs/INCIDENT_RESPONSE_RUNBOOK.md`
 - `docs/RAILWAY_OPERATIONS_RUNBOOK.md`
 - `docs/PRODUCT_CLOSURE_PLAN.md`
+- `docs/BETA_GO_NO_GO_CHECKLIST.md`
 - `docs/adr/`
 
 ## Desenvolvimento

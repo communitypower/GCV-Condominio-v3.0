@@ -151,13 +151,13 @@ SELECT COUNT(*) FROM "AuditEvent";
 Manual logical backup option for a pre-migration checkpoint:
 
 ```bash
-pg_dump "$DATABASE_URL" --format=custom --no-owner --no-acl --file "gcv-backup-$(date +%Y%m%d-%H%M%S).dump"
+DATABASE_URL="$DATABASE_URL" scripts/db_backup.sh
 ```
 
 Restore that dump into a disposable recovery database first:
 
 ```bash
-pg_restore --dbname "$RECOVERY_DATABASE_URL" --clean --if-exists --no-owner --no-acl "gcv-backup-YYYYMMDD-HHMMSS.dump"
+RECOVERY_DATABASE_URL="$RECOVERY_DATABASE_URL" scripts/db_restore_verify.sh backups/gcv-backup-YYYYMMDD-HHMMSS.dump
 ```
 
 Only point an app at the restored database after validating row counts and `/readyz`.
@@ -236,6 +236,7 @@ Go requires:
 - Mock login is unavailable in production.
 - AI/export flags are disabled for real-data tenants.
 - No high/critical finding is open for auth, tenant isolation, documents, secrets, or migrations.
+- `docs/BETA_GO_NO_GO_CHECKLIST.md` is completed and signed off.
 
 No-go if any of these fail.
 

@@ -13,6 +13,7 @@ Execution checkpoint:
 - Auth hardening continued: beta allowlist now gates staging/production login paths, and auth login/logout/known failed-login/OAuth-linking events are written to tenant audit logs.
 - AI/export hardening started: AI, GitHub/Gist, and demo export endpoints require an authenticated session, enforce feature flags server-side, and write audit events for blocked or attempted use.
 - Browser security hardening continued: staging/production block unsafe cross-origin requests with an Origin/APP_URL CSRF guard.
+- Release closure artifacts started: changelog, beta go/no-go checklist, and logical backup/restore helper scripts added.
 - Remaining Week 2 work: review security scan findings when the GitHub workflow runs and keep expanding negative coverage as new protected routes are added.
 - Remaining Week 3 work: perform a real staging restore drill after Railway environments and backups are provisioned.
 - Local note: Gitleaks could not be run locally because Docker failed to pull from GHCR due to host credential configuration; the GitHub Actions workflow is the intended execution path.
@@ -160,6 +161,8 @@ Current migration safety note:
 - CI runs that verification against a clean PostgreSQL service before seed and API smoke tests.
 - Docker Compose applies versioned migrations before local container startup.
 - Railway uses `npm run db:migrate:deploy` as the pre-deploy command.
+- `scripts/db_backup.sh` creates a custom-format logical PostgreSQL backup from `DATABASE_URL`.
+- `scripts/db_restore_verify.sh` restores a dump into `RECOVERY_DATABASE_URL` and prints core row counts for validation.
 
 ### Week 4: Staging Beta
 
@@ -183,6 +186,11 @@ Current migration safety note:
 - Run rollback and restore drills.
 - Publish `CHANGELOG.md`.
 - Produce go/no-go checklist for expanding beta access.
+
+Current release readiness note:
+
+- `CHANGELOG.md` contains the pending `0.1.0-beta.1` release candidate notes.
+- `docs/BETA_GO_NO_GO_CHECKLIST.md` defines the external staging/production decision checklist.
 
 ## 5. Acceptance Criteria
 
