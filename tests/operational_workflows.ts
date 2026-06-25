@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, UnitStatus, UnitType } from '@prisma/client';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000/api/v1';
 const prisma = new PrismaClient();
@@ -9,6 +9,8 @@ async function runTests() {
   let ticketId: string | null = null;
   let chargeId: string | null = null;
   let billingPeriodId: string | null = null;
+  let tempUnitId: string | null = null;
+  let tempBuildingId: string | null = null;
 
   try {
     // 1. Authenticate as Syndic
@@ -27,6 +29,25 @@ async function runTests() {
     const condos = (await condosRes.json()) as any[];
     const condoId = condos[0].id;
     const accountId = condos[0].accountId;
+
+    const tempBuilding = await prisma.building.create({
+      data: {
+        name: `Operational Workflow Test Building ${Date.now()}`,
+        condominiumId: condoId,
+      },
+    });
+    tempBuildingId = tempBuilding.id;
+
+    const tempUnit = await prisma.unit.create({
+      data: {
+        number: `OPS-${Date.now()}`,
+        type: UnitType.apartment,
+        status: UnitStatus.occupied,
+        fractionalShare: 0.001,
+        buildingId: tempBuilding.id,
+      },
+    });
+    tempUnitId = tempUnit.id;
 
     // 2. Test Maintenance Ticket Workflow
     console.log("Testing maintenance ticket validation...");
@@ -158,12 +179,6 @@ async function runTests() {
     console.log("✔ Invalid maintenance plan payload rejected successfully (400)");
 
     console.log("Creating disposable billing charge...");
-    const unitsRes = await fetch(`${BASE_URL}/condominiums/${condoId}/units`, {
-      headers: { Cookie: syndicCookie }
-    });
-    const units = (await unitsRes.json()) as any[];
-    assert.ok(units.length > 0, "Should return seeded units");
-    const testUnit = units[0];
     const monthString = `2099-${String((Date.now() % 12) + 1).padStart(2, '0')}`;
 
     const createChargeRes = await fetch(`${BASE_URL}/condominiums/${condoId}/charges`, {
@@ -173,7 +188,7 @@ async function runTests() {
         Cookie: syndicCookie
       },
       body: JSON.stringify({
-        unitId: testUnit.id,
+        unitId: tempUnit.id,
         monthString,
         amount: 123.45,
         dueDate: `${monthString}-10`,
@@ -232,6 +247,14 @@ async function runTests() {
       await prisma.auditEvent.deleteMany({ where: { entity: 'Charge', entityId: chargeId } });
       await prisma.chargeLineItem.deleteMany({ where: { chargeId } });
       await prisma.charge.deleteMany({ where: { id: chargeId } });
+    }
+
+    if (tempUnitId) {
+      await prisma.unit.deleteMany({ where: { id: tempUnitId } });
+    }
+
+    if (tempBuildingId) {
+      await prisma.building.deleteMany({ where: { id: tempBuildingId } });
     }
 
     if (billingPeriodId) {
