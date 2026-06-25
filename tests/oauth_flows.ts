@@ -2,7 +2,8 @@ import assert from 'assert';
 import crypto from 'crypto';
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import { AuditAction, PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import { AuditAction, PlatformRole, PrismaClient } from '@prisma/client';
 import authRouter from '../server/routes/auth';
 
 const prisma = new PrismaClient();
@@ -177,6 +178,8 @@ function getCookieValue(cookieHeader: string, name: string): string | null {
 
 async function runTests() {
   await setup();
+  let allowlistTestAccountId: string | null = null;
+  let allowlistTestUserId: string | null = null;
 
   try {
     console.log('\n--- Running OAuth flow tests ---\n');
@@ -186,6 +189,34 @@ async function runTests() {
 
     const originalNodeEnv = process.env.NODE_ENV;
     const originalBetaAllowedEmails = process.env.BETA_ALLOWED_EMAILS;
+    const allowlistTestEmail = 'beta-allowlist-test@gcv.com.br';
+    const allowlistTestPassword = 'beta-allowlist-test-password';
+
+    await prisma.auditEvent.deleteMany({ where: { userEmail: allowlistTestEmail } });
+    await prisma.membership.deleteMany({ where: { user: { email: allowlistTestEmail } } });
+    await prisma.user.deleteMany({ where: { email: allowlistTestEmail } });
+    await prisma.account.deleteMany({ where: { name: 'Beta Allowlist Test Account' } });
+
+    const allowlistTestAccount = await prisma.account.create({
+      data: { name: 'Beta Allowlist Test Account' },
+    });
+    allowlistTestAccountId = allowlistTestAccount.id;
+
+    const allowlistTestUser = await prisma.user.create({
+      data: {
+        email: allowlistTestEmail,
+        passwordHash: bcrypt.hashSync(allowlistTestPassword, 10),
+      },
+    });
+    allowlistTestUserId = allowlistTestUser.id;
+
+    await prisma.membership.create({
+      data: {
+        userId: allowlistTestUser.id,
+        accountId: allowlistTestAccount.id,
+        role: PlatformRole.admin,
+      },
+    });
 
     console.log('Test 0: Testing production-like beta allowlist for password login...');
     try {
@@ -195,23 +226,23 @@ async function runTests() {
       const mockLoginRes = await fetch(`${BASE_URL}/mock-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'sindico@gcv.com.br' }),
+        body: JSON.stringify({ email: allowlistTestEmail }),
       });
       assert.strictEqual(mockLoginRes.status, 403, 'Mock login should be blocked in staging');
 
       const blockedLoginRes = await fetch(`${BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'sindico@gcv.com.br', password: 'sindico123' }),
+        body: JSON.stringify({ email: allowlistTestEmail, password: allowlistTestPassword }),
       });
       assert.strictEqual(blockedLoginRes.status, 403, 'Non-allowlisted staging user should be blocked');
 
-      process.env.BETA_ALLOWED_EMAILS = 'sindico@gcv.com.br';
+      process.env.BETA_ALLOWED_EMAILS = allowlistTestEmail;
 
       const allowedLoginRes = await fetch(`${BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'sindico@gcv.com.br', password: 'sindico123' }),
+        body: JSON.stringify({ email: allowlistTestEmail, password: allowlistTestPassword }),
       });
       assert.strictEqual(allowedLoginRes.status, 200, 'Allowlisted staging user should log in');
       assert.ok(allowedLoginRes.headers.get('set-cookie')?.includes('gcv_session'), 'Allowlisted login should set session cookie');
@@ -219,14 +250,14 @@ async function runTests() {
       const [blockedAudit, allowedAudit] = await Promise.all([
         prisma.auditEvent.findFirst({
           where: {
-            userEmail: 'sindico@gcv.com.br',
+            userEmail: allowlistTestEmail,
             action: AuditAction.auth_failed,
             details: 'Tentativa de login bloqueada pela allowlist beta.',
           },
         }),
         prisma.auditEvent.findFirst({
           where: {
-            userEmail: 'sindico@gcv.com.br',
+            userEmail: allowlistTestEmail,
             action: AuditAction.auth_login,
             details: 'Login por senha realizado com sucesso.',
           },
@@ -466,6 +497,14 @@ async function runTests() {
     await prisma.auditEvent.deleteMany({
       where: { details: { in: AUTH_AUDIT_TEST_DETAILS } },
     });
+    if (allowlistTestAccountId) {
+      await prisma.auditEvent.deleteMany({ where: { accountId: allowlistTestAccountId } });
+      await prisma.membership.deleteMany({ where: { accountId: allowlistTestAccountId } });
+      await prisma.account.deleteMany({ where: { id: allowlistTestAccountId } });
+    }
+    if (allowlistTestUserId) {
+      await prisma.user.deleteMany({ where: { id: allowlistTestUserId } });
+    }
     await teardown();
   }
 }
