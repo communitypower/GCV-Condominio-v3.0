@@ -190,7 +190,7 @@ async function runTests() {
     console.log('Test 0: Testing production-like beta allowlist for password login...');
     try {
       process.env.NODE_ENV = 'staging';
-      process.env.BETA_ALLOWED_EMAILS = 'sindico@gcv.com.br';
+      process.env.BETA_ALLOWED_EMAILS = 'beta-only@example.com';
 
       const mockLoginRes = await fetch(`${BASE_URL}/mock-login`, {
         method: 'POST',
@@ -202,9 +202,11 @@ async function runTests() {
       const blockedLoginRes = await fetch(`${BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'zelador@gcv.com.br', password: 'zelador123' }),
+        body: JSON.stringify({ email: 'sindico@gcv.com.br', password: 'sindico123' }),
       });
       assert.strictEqual(blockedLoginRes.status, 403, 'Non-allowlisted staging user should be blocked');
+
+      process.env.BETA_ALLOWED_EMAILS = 'sindico@gcv.com.br';
 
       const allowedLoginRes = await fetch(`${BASE_URL}/login`, {
         method: 'POST',
@@ -217,7 +219,7 @@ async function runTests() {
       const [blockedAudit, allowedAudit] = await Promise.all([
         prisma.auditEvent.findFirst({
           where: {
-            userEmail: 'zelador@gcv.com.br',
+            userEmail: 'sindico@gcv.com.br',
             action: AuditAction.auth_failed,
             details: 'Tentativa de login bloqueada pela allowlist beta.',
           },
