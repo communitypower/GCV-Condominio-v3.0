@@ -1,8 +1,14 @@
 # Product Closure Status
 
-Date: 2026-06-24
+Date: 2026-06-25
 
 Status: local/codebase execution complete for the controlled beta foundation. External environment gates remain required before real production beta.
+
+Latest validation:
+
+- GitHub Actions `GCV SaaS CI` passed on commit `5ec9cfd`.
+- GitHub Actions `GCV SaaS Security` passed on commit `5ec9cfd`.
+- Dependabot compatibility checks for the updated GitHub Actions versions passed on commit `5ec9cfd`.
 
 ## Completed In Repository
 
@@ -24,7 +30,8 @@ Status: local/codebase execution complete for the controlled beta foundation. Ex
 - [x] Tenant isolation, document ACL, operational workflow, feature flag, observability, OAuth, and CSRF tests.
 - [x] AI, GitHub/Gist, and demo export paths require authentication, feature flags, and audit events.
 - [x] CI quality gate and clean-database API smoke job.
-- [x] Security workflow with Gitleaks and CodeQL.
+- [x] Security workflow with Gitleaks and CodeQL v4.
+- [x] Remote GitHub Actions security execution reviewed with no blocking findings in the latest run.
 - [x] Dependabot for npm and GitHub Actions.
 - [x] Pull request template with validation/risk gates.
 - [x] Beta go/no-go checklist.
@@ -43,7 +50,6 @@ These cannot be truthfully completed from the local workspace alone:
 - [ ] Run smoke tests against the real staging environment.
 - [ ] Enable Railway production backups.
 - [ ] Perform Railway staging restore drill and record it in `docs/RESTORE_DRILL_LOG.md`.
-- [ ] Review GitHub Actions security findings after remote execution.
 - [ ] Complete LGPD/privacy review before AI/export with real tenant data.
 - [ ] Complete production beta go/no-go checklist.
 - [ ] Create and deploy release tag `v0.1.0-beta.1` after go approval.
