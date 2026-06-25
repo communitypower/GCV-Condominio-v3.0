@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, RelationshipRole, UnitStatus, UnitType } from '@prisma/client';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000/api/v1';
 const prisma = new PrismaClient();
@@ -7,6 +7,9 @@ const prisma = new PrismaClient();
 async function runTests() {
   console.log("Running Document ACL Verification tests...");
   let privateDocId: string | null = null;
+  let tempRelationshipId: string | null = null;
+  let tempUnitId: string | null = null;
+  let tempBuildingId: string | null = null;
 
   try {
     // 1. Login as Syndic to find document IDs and condo ID
@@ -35,17 +38,38 @@ async function runTests() {
     const publicDoc = documents.find(d => d.unitId === null);
     assert.ok(publicDoc, "Should have a public document");
 
-    // Create a unit-restricted document for testing
-    // Let's find unit IDs in condo
-    const unitsRes = await fetch(`${BASE_URL}/condominiums/${condoId}/units`, {
-      headers: { Cookie: syndicCookie }
+    const carlosPerson = await prisma.person.findUnique({
+      where: { email: 'carlos.ramos@email.com' },
     });
-    const units = (await unitsRes.json()) as any[];
+    assert.ok(carlosPerson, "Seeded people should contain Carlos");
 
-    // Find Carlos Eduardo Ramos's unit (A-101) vs Mariana's unit (A-102)
-    const unitA101 = units.find(u => u.number === '101');
-    const unitA102 = units.find(u => u.number === '102');
-    assert.ok(unitA101 && unitA102, "Seeded units should contain A-101 and A-102");
+    const tempBuilding = await prisma.building.create({
+      data: {
+        name: `Document ACL Test Building ${Date.now()}`,
+        condominiumId: condoId,
+      },
+    });
+    tempBuildingId = tempBuilding.id;
+
+    const tempUnit = await prisma.unit.create({
+      data: {
+        number: `DOC-${Date.now()}`,
+        type: UnitType.apartment,
+        status: UnitStatus.occupied,
+        fractionalShare: 0.001,
+        buildingId: tempBuilding.id,
+      },
+    });
+    tempUnitId = tempUnit.id;
+
+    const tempRelationship = await prisma.unitRelationship.create({
+      data: {
+        unitId: tempUnit.id,
+        personId: carlosPerson.id,
+        role: RelationshipRole.tenant,
+      },
+    });
+    tempRelationshipId = tempRelationship.id;
 
     console.log("Testing document validation...");
     const invalidDocumentRes = await fetch(`${BASE_URL}/condominiums/${condoId}/documents`, {
@@ -65,7 +89,7 @@ async function runTests() {
     assert.strictEqual(invalidDocumentRes.status, 400, "Should reject invalid document payload");
     console.log("✔ Invalid document payload rejected successfully (400)");
 
-    console.log(`Creating private document for Unit A-101 (${unitA101.id})...`);
+    console.log(`Creating private document for temporary Carlos unit (${tempUnit.id})...`);
     const createPrivateRes = await fetch(`${BASE_URL}/condominiums/${condoId}/documents`, {
       method: 'POST',
       headers: {
@@ -76,12 +100,12 @@ async function runTests() {
         title: `Extrato Financeiro Restrito A-101 - Test ${Date.now()}`,
         category: "billing",
         requiredRole: "resident",
-        unitId: unitA101.id,
+        unitId: tempUnit.id,
         filePath: "uploads/private_a101.pdf"
       })
     });
     const privateDoc = (await createPrivateRes.json()) as any;
-    assert.ok(privateDoc.id, "Should have created private document successfully");
+    assert.ok(privateDoc.id, `Should have created private document successfully: ${JSON.stringify(privateDoc)}`);
     privateDocId = privateDoc.id;
 
     // 2. Login as Resident of unit A-101 (carlos.ramos@email.com)
@@ -145,6 +169,15 @@ async function runTests() {
       await prisma.auditEvent.deleteMany({ where: { entity: 'Document', entityId: privateDocId } });
       await prisma.documentVersion.deleteMany({ where: { documentId: privateDocId } });
       await prisma.document.deleteMany({ where: { id: privateDocId } });
+    }
+    if (tempRelationshipId) {
+      await prisma.unitRelationship.deleteMany({ where: { id: tempRelationshipId } });
+    }
+    if (tempUnitId) {
+      await prisma.unit.deleteMany({ where: { id: tempUnitId } });
+    }
+    if (tempBuildingId) {
+      await prisma.building.deleteMany({ where: { id: tempBuildingId } });
     }
     await prisma.$disconnect();
   }
