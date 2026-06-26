@@ -36,6 +36,16 @@ Prerequisites:
 - A release operator responsible for recording environment URLs and validation results.
 - The latest `main` branch must be green in GitHub Actions.
 
+Optional CLI helper:
+
+```bash
+scripts/railway_provision_step1.sh --plan
+npx -y @railway/cli login
+scripts/railway_provision_step1.sh --apply
+```
+
+Use `--plan` first. `--apply` creates Railway resources and requires an authenticated Railway CLI session.
+
 ### 2.1 Create The Railway Project
 
 1. In Railway, create a new project named `gcv-condominio`.
