@@ -2,7 +2,7 @@
 
 Date: 2026-05-31
 
-Status: Draft for implementation
+Status: Historical/superseded for beta closure. Use `docs/PRODUCT_CLOSURE_PLAN.md` and `docs/RAILWAY_OPERATIONS_RUNBOOK.md` for current Railway implementation.
 
 Scope: how GCV Condominio should move from local Codex development to cloud SaaS delivery, and how future users receive updates, bug fixes, security fixes, and operational support.
 

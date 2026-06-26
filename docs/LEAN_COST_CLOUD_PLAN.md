@@ -2,7 +2,7 @@
 
 Date: 2026-06-02
 
-Status: Active cost-control reference
+Status: Historical/superseded for beta closure. Current beta cost and environment controls are governed by `docs/PRODUCT_CLOSURE_PLAN.md` and `docs/RAILWAY_OPERATIONS_RUNBOOK.md`, with Railway as the official beta platform.
 
 ## 1. Summary
 
@@ -231,4 +231,3 @@ Cost reduction must not remove:
 - Local Docker Compose is acceptable for most early development.
 - No real tenant data enters the system until SaaS Starter gates pass.
 - Cloud costs must be validated with Google Cloud Pricing Calculator before provisioning.
-

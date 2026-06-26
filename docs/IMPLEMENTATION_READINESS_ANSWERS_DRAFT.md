@@ -2,7 +2,7 @@
 
 Date: 2026-05-31
 
-Status: Draft for stakeholder review
+Status: Historical/superseded for beta closure. Current beta decisions are captured in `docs/PRODUCT_CLOSURE_PLAN.md` and `docs/PRODUCT_CLOSURE_STATUS.md`.
 
 Basis: multi-agent review, repository inspection, current implementation-readiness questionnaire, and common SaaS/product engineering practice. This is an engineering/product recommendation, not legal, tax, accounting, or financial advice.
 

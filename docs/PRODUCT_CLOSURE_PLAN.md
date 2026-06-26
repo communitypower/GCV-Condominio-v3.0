@@ -18,7 +18,7 @@ Execution checkpoint:
 - Local restore drill passed with Docker PostgreSQL recovery database and recorded in `docs/RESTORE_DRILL_LOG.md`.
 - Maintenance automation added: Dependabot covers npm and GitHub Actions, and the PR template captures validation/risk gates.
 - Local/codebase execution status recorded in `docs/PRODUCT_CLOSURE_STATUS.md`; remaining work is external environment validation.
-- Remaining Week 2 work: review security scan findings when the GitHub workflow runs and keep expanding negative coverage as new protected routes are added.
+- Week 2 security scan review completed remotely: Gitleaks and CodeQL passed in GitHub Actions; keep expanding negative coverage as new protected routes are added.
 - Remaining Week 3 work: perform a real staging restore drill after Railway environments and backups are provisioned.
 - Local note: Gitleaks could not be run locally because Docker failed to pull from GHCR due to host credential configuration; the GitHub Actions workflow is the intended execution path.
 
@@ -31,7 +31,7 @@ Current baseline:
 - Local development works with Node 24, Docker Compose, PostgreSQL, Prisma, seed data, and health checks.
 - Dockerfile, `railway.json`, GitHub Actions CI, PostgreSQL, and Prisma are present.
 - Initial local auth, Google/Microsoft OAuth, RBAC/tenant guard, and audit logging exist.
-- Test scripts exist but must be integrated into `package.json` and CI.
+- Test scripts are integrated into `package.json` and GitHub Actions CI, including OAuth, CSRF, API smoke, migration verification, feature-flag, observability, and tenant/document coverage.
 - Production is not ready for paid customers until env validation, automated tests, migration safety, backup/restore validation, observability, LGPD review, and AI/export hardening are complete.
 
 Base decisions:

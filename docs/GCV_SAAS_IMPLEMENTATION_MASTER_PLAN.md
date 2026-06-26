@@ -2,7 +2,7 @@
 
 Date: 2026-06-02
 
-Status: Primary implementation control document
+Status: Historical/superseded for beta closure. The current execution source of truth is `docs/PRODUCT_CLOSURE_PLAN.md`, with Railway as the official beta platform.
 
 Basis: repository inspection, multi-agent review, implementation readiness draft, DevOps operations plan, and lean cloud cost decisions. This is an engineering/product implementation plan, not legal, tax, accounting, or financial advice.
 
@@ -437,4 +437,3 @@ Before starting production domain implementation:
 - AI no-real-data policy confirmed.
 - GitHub/Gist demo-only policy confirmed.
 - Lean cloud cost plan accepted.
-

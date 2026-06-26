@@ -2,9 +2,18 @@
 
 Date: 2026-06-02
 
-Status: Active implementation guidance
+Status: Active implementation guidance for the current Railway beta closure plan
 
 Purpose: define how Codex/GPT should implement GCV SaaS safely, locally first, and in small auditable steps.
+
+Current execution source of truth:
+
+- `docs/PRODUCT_CLOSURE_PLAN.md`
+- `docs/PRODUCT_CLOSURE_STATUS.md`
+- `docs/RAILWAY_OPERATIONS_RUNBOOK.md`
+- `docs/BETA_GO_NO_GO_CHECKLIST.md`
+
+Older GCP/Cloud Run plans are historical references only unless a future decision explicitly reopens them.
 
 ## 1. Operating Rules
 
@@ -70,7 +79,7 @@ DevOps Foundation tasks may touch runtime, package metadata, CI, Docker, local C
 
 SaaS Starter tasks may touch tenant shell, auth/session foundations, Prisma/PostgreSQL, first API adapters, synthetic seeds, and RBAC tests.
 
-SaaS Intermediate tasks may touch staging, Cloud SQL, document storage, monitoring, migration rehearsals, Playwright smoke tests, and backup/restore.
+SaaS Intermediate tasks may touch Railway staging, Railway PostgreSQL, document storage planning, monitoring, migration rehearsals, Playwright smoke tests, and backup/restore.
 
 SaaS Full tasks may touch production deployment, production database/storage, release approvals, incident response, restore drills, and security review readiness.
 
@@ -129,11 +138,11 @@ Implementation guidance:
 
 ## 7. Cost Control Rules
 
-Codex must preserve the lean cloud plan:
+Codex must preserve the current Railway beta cost posture:
 
 - Keep local Docker Compose as default.
-- Use Cloud Run min instances 0 when dev cloud deploy is introduced.
-- Do not add Cloud SQL until a gate justifies it.
+- Use isolated Railway environments for `dev`, `staging`, and `production` only after the corresponding gate is approved.
+- Do not provision production Railway PostgreSQL or real-data services until the beta checklist gates pass.
 - Do not add Redis/Memorystore until queues or sessions require it.
 - Do not add long log retention in non-production.
 - Do not enable real-data AI.
@@ -149,4 +158,3 @@ At the end of each implementation task, report:
 - Any risk or follow-up.
 
 Keep the report short and file-specific when useful.
-
