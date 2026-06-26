@@ -72,6 +72,21 @@ scripts/railway_provision_step1.sh --apply
 
 Use `--plan` first. `--apply` creates Railway resources and requires an authenticated Railway CLI session.
 
+If Railway reports `--workspace required in non-interactive mode`, select the workspace explicitly:
+
+```bash
+npx -y @railway/cli list --json
+export RAILWAY_WORKSPACE="<workspace-id-or-name>"
+scripts/railway_provision_step1.sh --apply
+```
+
+If a `gcv-condominio` project was already created, reuse it instead of creating a duplicate:
+
+```bash
+export RAILWAY_PROJECT_ID="<existing-railway-project-id>"
+scripts/railway_provision_step1.sh --apply
+```
+
 ### 2.1 Create The Railway Project
 
 1. In Railway, create a new project named `gcv-condominio`.
@@ -173,6 +188,46 @@ ENABLE_GITHUB_INTEGRATION=false
 ENABLE_DEMO_EXPORTS=false
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash
+```
+
+The helper script sets these known variables automatically on each app service:
+
+- `NODE_ENV` (`production` for `dev` by default, `staging` for `staging`, `production` for `production`)
+- `DATABASE_URL` using the matching Railway PostgreSQL service reference
+- `SESSION_SECRET` generated with a strong random value during `--apply`
+- `BETA_ALLOWED_EMAILS` using the synthetic beta list unless overridden
+- `MICROSOFT_TENANT_ID=common`
+- `ENABLE_AI_ASSISTANT=false`
+- `ENABLE_GITHUB_INTEGRATION=false`
+- `ENABLE_DEMO_EXPORTS=false`
+- `GEMINI_MODEL=gemini-3.5-flash`
+
+Configure these pending values before expecting staging/production to boot and pass OAuth validation:
+
+```bash
+export APP_URL_DEV="https://<dev-railway-domain>"
+export APP_URL_STAGING="https://<staging-railway-domain>"
+export APP_URL_PRODUCTION="https://<production-domain>"
+
+export GOOGLE_CLIENT_ID="<google-client-id>"
+export GOOGLE_CLIENT_SECRET="<google-client-secret>"
+export MICROSOFT_CLIENT_ID="<microsoft-client-id>"
+export MICROSOFT_CLIENT_SECRET="<microsoft-client-secret>"
+
+export BETA_ALLOWED_EMAILS_STAGING="<comma-separated-test-beta-emails>"
+export BETA_ALLOWED_EMAILS_PRODUCTION="<comma-separated-approved-real-beta-emails>"
+```
+
+Optional AI key, only for synthetic-data testing:
+
+```bash
+export GEMINI_API_KEY="<gemini-api-key>"
+```
+
+Then apply provisioning/configuration:
+
+```bash
+scripts/railway_provision_step1.sh --apply
 ```
 
 Environment-specific values:
