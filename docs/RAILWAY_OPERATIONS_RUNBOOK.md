@@ -36,6 +36,32 @@ Prerequisites:
 - A release operator responsible for recording environment URLs and validation results.
 - The latest `main` branch must be green in GitHub Actions.
 
+### 2.0 Authenticate Railway CLI
+
+Run this from the repository root before using any Railway provisioning command.
+
+Preferred browser flow:
+
+```bash
+npx -y @railway/cli login
+npx -y @railway/cli whoami
+```
+
+Browserless/device-code flow, useful when the terminal cannot open a browser:
+
+```bash
+npx -y @railway/cli login --browserless
+npx -y @railway/cli whoami
+```
+
+Expected result:
+
+- `login` opens Railway authentication or prints a browserless sign-in link and code.
+- `whoami` prints the authenticated Railway user.
+- If `whoami` returns `Unauthorized. Please login with railway login`, authentication is not complete.
+
+If the CLI asks for workspace/project selection later, choose the Railway workspace that should own the beta project.
+
 Optional CLI helper:
 
 ```bash
