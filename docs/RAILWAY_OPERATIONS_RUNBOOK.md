@@ -25,7 +25,97 @@ Each environment must have its own:
 
 Do not share a `DATABASE_URL`, `SESSION_SECRET`, OAuth secret, or production domain between environments.
 
-## 2. Required Variables
+## 2. Step 1: Provision Railway Environments
+
+Goal: create the isolated Railway foundation required before staging validation. Do not add real tenant data during this step.
+
+Prerequisites:
+
+- GitHub repository access to `communitypower/GCV-Condominio-v3.0`.
+- Railway workspace access with permission to create projects, environments, services, variables, and PostgreSQL plugins.
+- A release operator responsible for recording environment URLs and validation results.
+- The latest `main` branch must be green in GitHub Actions.
+
+### 2.1 Create The Railway Project
+
+1. In Railway, create a new project named `gcv-condominio`.
+2. Connect the project to the GitHub repository `communitypower/GCV-Condominio-v3.0`.
+3. Select Dockerfile-based builds.
+4. Confirm Railway detects `railway.json`.
+5. Confirm these project-level deployment settings are visible or inherited from `railway.json`:
+   - Build: Dockerfile
+   - Pre-deploy command: `npm run db:migrate:deploy`
+   - Start command: `npm run start`
+   - Healthcheck path: `/readyz`
+
+### 2.2 Create Isolated Environments
+
+Create these Railway environments in the same project:
+
+| Environment | Purpose | Data allowed now | Deploy mode |
+| --- | --- | --- | --- |
+| `dev` | Shared integration | Synthetic only | Auto-deploy from `main` is allowed |
+| `staging` | Production rehearsal | Synthetic or anonymized only | Manual promotion or staging tag |
+| `production` | Controlled beta | No real data until go/no-go passes | Manual release/tag promotion only |
+
+Rules:
+
+- Do not clone variables from production into non-production or from non-production into production without reviewing each value.
+- Do not share PostgreSQL services between environments.
+- Do not enable production real-data use until the beta checklist is complete.
+
+### 2.3 Create Services Per Environment
+
+For each environment, create:
+
+1. One app service connected to the GitHub repo.
+2. One Railway PostgreSQL service.
+3. One generated Railway domain for initial validation.
+4. Later, one custom domain when DNS is ready.
+
+Service names:
+
+- `gcv-app-dev`
+- `gcv-postgres-dev`
+- `gcv-app-staging`
+- `gcv-postgres-staging`
+- `gcv-app-production`
+- `gcv-postgres-production`
+
+### 2.4 Configure Deployment Behavior
+
+Set the app service behavior:
+
+- `dev`: auto-deploy from `main` may be enabled after variables are configured.
+- `staging`: keep auto-deploy disabled unless a staging tag flow is explicitly configured.
+- `production`: keep auto-deploy disabled; deploy only after `docs/BETA_GO_NO_GO_CHECKLIST.md` is complete.
+
+Before first deploy in each environment:
+
+- Add all required variables from the next section.
+- Confirm `DATABASE_URL` points to that environment's Railway PostgreSQL service.
+- Confirm `APP_URL` matches the Railway HTTPS domain exactly.
+- Keep AI, GitHub, and demo export flags disabled.
+
+### 2.5 Validate Provisioning
+
+After variables are configured and the app deploys:
+
+1. Open the Railway deployment logs and confirm migrations ran through `npm run db:migrate:deploy`.
+2. Confirm the app starts with `npm run start`.
+3. Validate:
+
+```bash
+curl -fsS https://<environment-domain>/health
+curl -fsS https://<environment-domain>/livez
+curl -fsS https://<environment-domain>/readyz
+```
+
+4. Record each environment domain, app service, database service, and validation result in the release notes or beta checklist.
+
+Step 1 is complete only when `dev` and `staging` have isolated app/database services, required variables, successful deploys, and passing health/readiness checks. `production` may be provisioned at this stage, but it must not receive real data until backup, restore, OAuth, staging smoke, LGPD/privacy, and go/no-go gates pass.
+
+## 3. Required Variables
 
 Set these in every Railway environment:
 
@@ -64,7 +154,7 @@ Feature flags:
 - Keep `ENABLE_DEMO_EXPORTS=false` for real-data tenants.
 - These flags are enforced server-side on authenticated endpoints and blocked attempts are written to tenant audit logs.
 
-## 3. Deployment Flow
+## 4. Deployment Flow
 
 Before deployment:
 
@@ -95,7 +185,7 @@ Release order:
 7. Create release tag `v0.x.y`.
 8. Deploy/promote to `production` only after the beta checklist passes.
 
-## 4. Migration Safety
+## 5. Migration Safety
 
 Rules:
 
@@ -124,7 +214,7 @@ npm run build
 
 Never edit an already-applied migration in `main`. Add a new forward migration instead.
 
-## 5. Backup And Restore Drill
+## 6. Backup And Restore Drill
 
 Production beta minimum:
 
@@ -165,7 +255,7 @@ RECOVERY_DATABASE_URL="$RECOVERY_DATABASE_URL" scripts/db_restore_verify.sh back
 
 Only point an app at the restored database after validating row counts and `/readyz`.
 
-## 6. Rollback
+## 7. Rollback
 
 Application rollback:
 
@@ -182,7 +272,7 @@ Database rollback:
 - Promote restored database only after validation.
 - Otherwise, ship a forward-fix migration.
 
-## 7. Secrets Rotation
+## 8. Secrets Rotation
 
 Rotate immediately after suspected exposure and at least before beta expansion.
 
@@ -208,7 +298,7 @@ OAuth secret rotation:
 3. Validate login in staging.
 4. Apply to production.
 
-## 8. Incident Kill Switches
+## 9. Incident Kill Switches
 
 Use Railway variables and redeploy/restart:
 
@@ -226,7 +316,7 @@ Use these immediately for:
 - OAuth provider incident
 - Beta tenant incident investigation
 
-## 9. Production Beta Go/No-Go
+## 10. Production Beta Go/No-Go
 
 Go requires:
 
@@ -243,7 +333,7 @@ Go requires:
 
 No-go if any of these fail.
 
-## 10. Auth Audit Expectations
+## 11. Auth Audit Expectations
 
 Authentication events are written to tenant audit logs when a user can be associated with at least one account:
 
