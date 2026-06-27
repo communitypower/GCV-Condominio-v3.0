@@ -18,6 +18,7 @@ import billingRouter from "./server/routes/billing";
 import equipmentRouter from "./server/routes/equipment";
 import documentsRouter from "./server/routes/documents";
 import auditRouter from "./server/routes/audit";
+import testingRouter from "./server/routes/testing";
 import { requireAuth } from "./server/middleware/auth";
 import { createCsrfProtection } from "./server/middleware/csrf";
 
@@ -140,6 +141,7 @@ app.use("/api/v1/condominiums", billingRouter);
 app.use("/api/v1/condominiums", equipmentRouter);
 app.use("/api/v1/condominiums", documentsRouter);
 app.use("/api/v1/accounts", auditRouter);
+app.use("/api/v1/testing", testingRouter);
 
 // Health check endpoint
 app.get("/health", (req, res) => {

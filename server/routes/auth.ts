@@ -484,7 +484,7 @@ router.get('/google/callback', async (req, res) => {
                 payload: {
                   user: ${JSON.stringify(payloadUser)}
                 }
-              }, '*');
+              }, '${req.protocol}://${req.get('host')}');
               setTimeout(() => {
                 window.close();
               }, 1200);
@@ -710,7 +710,7 @@ router.get('/microsoft/callback', async (req, res) => {
                 payload: {
                   user: ${JSON.stringify(payloadUser)}
                 }
-              }, '*');
+              }, '${req.protocol}://${req.get('host')}');
               setTimeout(() => {
                 window.close();
               }, 1200);
