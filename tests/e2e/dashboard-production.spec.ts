@@ -6,9 +6,9 @@ const isProductionTarget = baseURL.includes('gcv-app-production-production.up.ra
 
 async function passwordLogin(page: Page, email = 'sindico@gcv.com.br', password = 'sindico123') {
   await page.goto('/');
-  await page.getByPlaceholder('exemplo@email.com').fill(email);
-  await page.getByPlaceholder('Sua senha').fill(password);
-  await page.getByRole('button', { name: /Entrar com E-mail/i }).click();
+  await page.getByTestId('login-email').fill(email);
+  await page.getByTestId('login-password').fill(password);
+  await page.getByTestId('login-submit').click();
   await expect(page.getByText(/ENCERRAR SESSÃO/i)).toBeVisible();
 }
 
@@ -53,30 +53,29 @@ test('password session, dashboard shell, sidebar workflows, and logout work', as
   await expect(page.getByTestId('dashboard-sidebar').getByText(/Cassiano Marins/i)).toBeVisible();
 
   const menuItems = [
-    /ASSISTENTE IA/i,
-    /Painel Geral/i,
-    /Edifícios \/ Imóveis/i,
-    /Equipamentos/i,
-    /Planos Preventivos/i,
-    /Ordens de Serviço/i,
-    /Logs de Operação/i,
-    /Visualizador BIM 3D/i,
-    /Ciclo de Vida LCC/i,
-    /Compras \/ Insumos/i,
-    /Cobranças \/ Receitas/i,
-    /Contas a Pagar/i,
-    /Demonstrativos DRE/i,
-    /Fichas Moradores/i,
-    /Documentação/i,
-    /Mural de Avisos/i,
-    /Corpo Diretivo \/ Staff/i,
-    /Conexão Github/i,
+    ['ia_assistant', /Assistente IA/i],
+    ['dashboard', /Dashboard/i],
+    ['edificios', /Cadastro de Unidades Habitacionais/i],
+    ['equipamentos', /Controle de Ativos e Equipamentos/i],
+    ['planos', /Planos de Manutenção Preventiva/i],
+    ['ordens', /Posto de Manutenção Predial/i],
+    ['logs', /Livro de Ocorrências/i],
+    ['bim', /Visualizador BIM Integrado/i],
+    ['ciclovida', /Gestão de Custo de Ciclo de Vida/i],
+    ['compras', /Portal de Compras/i],
+    ['cobrancas', /Painel de Faturamento/i],
+    ['pagamentos', /Contas a Pagar/i],
+    ['demonstrativos', /Demonstrativos Financeiros/i],
+    ['condominos', /Cadastro Geral de Condôminos/i],
+    ['documentacao', /Biblioteca Digital de Documentação/i],
+    ['notificacoes', /Mural de Avisos/i],
+    ['usuarios', /Corpo Diretivo e Staff/i],
+    ['github', /Controle de Versão & Integração GitHub/i],
   ];
 
-  for (const name of menuItems) {
-    await page.getByRole('button', { name }).click();
-    await expect(page.getByRole('button', { name })).toBeVisible();
-    await expect(page.locator('main')).toBeVisible();
+  for (const [tab, expectedContent] of menuItems) {
+    await page.getByTestId(`nav-${tab}`).click();
+    await expect(page.getByTestId('dashboard-main')).toContainText(expectedContent);
   }
 
   await page.getByRole('button', { name: /ENCERRAR SESSÃO/i }).click();

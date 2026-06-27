@@ -1291,6 +1291,7 @@ export default function App() {
                     <div className="space-y-3">
                       <button
                         type="button"
+                        data-testid="oauth-google"
                         disabled={googleLoading || microsoftLoading || loginLoading}
                         onClick={handleGoogleLogin}
                         className="w-full bg-zinc-950/70 border border-zinc-850 hover:border-[#10b981]/50 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
@@ -1306,6 +1307,7 @@ export default function App() {
 
                       <button
                         type="button"
+                        data-testid="oauth-microsoft"
                         disabled={googleLoading || microsoftLoading || loginLoading}
                         onClick={handleMicrosoftLogin}
                         className="w-full bg-zinc-950/70 border border-zinc-850 hover:border-[#10b981]/50 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
@@ -1336,6 +1338,7 @@ export default function App() {
                       <div className="space-y-1.5 text-left">
                         <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">E-mail</label>
                         <input
+                          data-testid="login-email"
                           type="email"
                           required
                           value={loginEmail}
@@ -1348,6 +1351,7 @@ export default function App() {
                       <div className="space-y-1.5 text-left">
                         <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">Senha</label>
                         <input
+                          data-testid="login-password"
                           type="password"
                           required
                           value={loginPassword}
@@ -1359,6 +1363,7 @@ export default function App() {
 
                       <button
                         type="submit"
+                        data-testid="login-submit"
                         disabled={loginLoading || googleLoading || microsoftLoading}
                         className="w-full bg-[#10b981] hover:bg-[#0ea572] disabled:bg-emerald-850 disabled:text-zinc-400 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-950/25"
                       >
@@ -1585,18 +1590,18 @@ export default function App() {
             /* RESTRICTED MORADOR SIDEBAR */
             <div className="space-y-1">
               <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">PORTAL DO MORADOR</span>
-              <button onClick={() => setActiveTab('dashboard')} className={navBtnStyle('dashboard')}>
-                <Building className="w-3.5 h-3.5" /> Meu Painel (A-101)
-              </button>
-              <button onClick={() => setActiveTab('ia_assistant')} className={navBtnStyle('ia_assistant')}>
-                <Sparkles className="w-3.5 h-3.5 text-[#10b981]" /> Assistente IA ✨
-              </button>
-              <button onClick={() => setActiveTab('ordens')} className={navBtnStyle('ordens')}>
-                <Wrench className="w-3.5 h-3.5" /> Solicitar Reparo
-              </button>
-              <button onClick={() => setActiveTab('notificacoes')} className={navBtnStyle('notificacoes')}>
-                <Bell className="w-3.5 h-3.5" /> Mural de Avisos
-              </button>
+                <button data-testid="nav-dashboard" onClick={() => setActiveTab('dashboard')} className={navBtnStyle('dashboard')}>
+                  <Building className="w-3.5 h-3.5" /> Meu Painel (A-101)
+                </button>
+                <button data-testid="nav-ia_assistant" onClick={() => setActiveTab('ia_assistant')} className={navBtnStyle('ia_assistant')}>
+                  <Sparkles className="w-3.5 h-3.5 text-[#10b981]" /> Assistente IA ✨
+                </button>
+                <button data-testid="nav-ordens" onClick={() => setActiveTab('ordens')} className={navBtnStyle('ordens')}>
+                  <Wrench className="w-3.5 h-3.5" /> Solicitar Reparo
+                </button>
+                <button data-testid="nav-notificacoes" onClick={() => setActiveTab('notificacoes')} className={navBtnStyle('notificacoes')}>
+                  <Bell className="w-3.5 h-3.5" /> Mural de Avisos
+                </button>
             </div>
           ) : (
             /* COMPREHENSIVE STAFF & ADMIN SIDEBAR */
@@ -1604,7 +1609,7 @@ export default function App() {
               {/* Special IA Intelligence Group */}
               <div className="space-y-1">
                 <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981] flex items-center gap-1">CO-PILOT IA</span>
-                <button onClick={() => setActiveTab('ia_assistant')} className={navBtnStyle('ia_assistant')}>
+                <button data-testid="nav-ia_assistant" onClick={() => setActiveTab('ia_assistant')} className={navBtnStyle('ia_assistant')}>
                   <Sparkles className="w-3.5 h-3.5 text-[#10b981]" /> Assistente IA ✨
                 </button>
               </div>
@@ -1612,13 +1617,13 @@ export default function App() {
               {/* Group 1: OPERACIONAL */}
               <div className="space-y-1">
                 <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">OPERACIONAL</span>
-                <button onClick={() => setActiveTab('dashboard')} className={navBtnStyle('dashboard')}>
+                <button data-testid="nav-dashboard" onClick={() => setActiveTab('dashboard')} className={navBtnStyle('dashboard')}>
                   <Building className="w-3.5 h-3.5" /> Painel Geral
                 </button>
-                <button onClick={() => setActiveTab('edificios')} className={navBtnStyle('edificios')}>
+                <button data-testid="nav-edificios" onClick={() => setActiveTab('edificios')} className={navBtnStyle('edificios')}>
                   <Building className="w-3.5 h-3.5" /> Edifícios / Imóveis
                 </button>
-                <button onClick={() => setActiveTab('equipamentos')} className={navBtnStyle('equipamentos')}>
+                <button data-testid="nav-equipamentos" onClick={() => setActiveTab('equipamentos')} className={navBtnStyle('equipamentos')}>
                   <Wrench className="w-3.5 h-3.5" /> Equipamentos ({equipments.length})
                 </button>
               </div>
@@ -1626,13 +1631,13 @@ export default function App() {
               {/* Group 2: MANUTENÇÃO */}
               <div className="space-y-1">
                 <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">MANUTENÇÃO</span>
-                <button onClick={() => setActiveTab('planos')} className={navBtnStyle('planos')}>
+                <button data-testid="nav-planos" onClick={() => setActiveTab('planos')} className={navBtnStyle('planos')}>
                   <Calendar className="w-3.5 h-3.5" /> Planos Preventivos
                 </button>
-                <button onClick={() => setActiveTab('ordens')} className={navBtnStyle('ordens')}>
+                <button data-testid="nav-ordens" onClick={() => setActiveTab('ordens')} className={navBtnStyle('ordens')}>
                   <Wrench className="w-3.5 h-3.5" /> Ordens de Serviço
                 </button>
-                <button onClick={() => setActiveTab('logs')} className={navBtnStyle('logs')}>
+                <button data-testid="nav-logs" onClick={() => setActiveTab('logs')} className={navBtnStyle('logs')}>
                   <Activity className="w-3.5 h-3.5" /> Logs de Operação
                 </button>
               </div>
@@ -1640,13 +1645,13 @@ export default function App() {
               {/* Group 3: ENGENHARIA */}
               <div className="space-y-1">
                 <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">ENGENHARIA & BIM</span>
-                <button onClick={() => setActiveTab('bim')} className={navBtnStyle('bim')}>
+                <button data-testid="nav-bim" onClick={() => setActiveTab('bim')} className={navBtnStyle('bim')}>
                   <Box className="w-3.5 h-3.5" /> Visualizador BIM 3D
                 </button>
-                <button onClick={() => setActiveTab('ciclovida')} className={navBtnStyle('ciclovida')}>
+                <button data-testid="nav-ciclovida" onClick={() => setActiveTab('ciclovida')} className={navBtnStyle('ciclovida')}>
                   <AreaChart className="w-3.5 h-3.5" /> Ciclo de Vida LCC
                 </button>
-                <button onClick={() => setActiveTab('compras')} className={navBtnStyle('compras')}>
+                <button data-testid="nav-compras" onClick={() => setActiveTab('compras')} className={navBtnStyle('compras')}>
                   <ShoppingCart className="w-3.5 h-3.5" /> Compras / Insumos
                 </button>
               </div>
@@ -1655,13 +1660,13 @@ export default function App() {
               {user.role === 'admin' && (
                 <div className="space-y-1">
                   <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">FINANCEIRO</span>
-                  <button onClick={() => setActiveTab('cobrancas')} className={navBtnStyle('cobrancas')}>
+                  <button data-testid="nav-cobrancas" onClick={() => setActiveTab('cobrancas')} className={navBtnStyle('cobrancas')}>
                     <Receipt className="w-3.5 h-3.5" /> Cobranças / Receitas
                   </button>
-                  <button onClick={() => setActiveTab('pagamentos')} className={navBtnStyle('pagamentos')}>
+                  <button data-testid="nav-pagamentos" onClick={() => setActiveTab('pagamentos')} className={navBtnStyle('pagamentos')}>
                     <CreditCard className="w-3.5 h-3.5" /> Contas a Pagar
                   </button>
-                  <button onClick={() => setActiveTab('demonstrativos')} className={navBtnStyle('demonstrativos')}>
+                  <button data-testid="nav-demonstrativos" onClick={() => setActiveTab('demonstrativos')} className={navBtnStyle('demonstrativos')}>
                     <Landmark className="w-3.5 h-3.5" /> Demonstrativos DRE
                   </button>
                 </div>
@@ -1671,18 +1676,18 @@ export default function App() {
               <div className="space-y-1">
                 <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">CONDOMÍNIO</span>
                 {user.role === 'admin' && (
-                  <button onClick={() => setActiveTab('condominos')} className={navBtnStyle('condominos')}>
+                  <button data-testid="nav-condominos" onClick={() => setActiveTab('condominos')} className={navBtnStyle('condominos')}>
                     <Users className="w-3.5 h-3.5" /> Fichas Moradores
                   </button>
                 )}
-                <button onClick={() => setActiveTab('documentacao')} className={navBtnStyle('documentacao')}>
+                <button data-testid="nav-documentacao" onClick={() => setActiveTab('documentacao')} className={navBtnStyle('documentacao')}>
                   <FolderOpen className="w-3.5 h-3.5" /> Documentação
                 </button>
-                <button onClick={() => setActiveTab('notificacoes')} className={navBtnStyle('notificacoes')}>
+                <button data-testid="nav-notificacoes" onClick={() => setActiveTab('notificacoes')} className={navBtnStyle('notificacoes')}>
                   <Bell className="w-3.5 h-3.5" /> Mural de Avisos
                 </button>
                 {user.role === 'admin' && (
-                  <button onClick={() => setActiveTab('usuarios')} className={navBtnStyle('usuarios')}>
+                  <button data-testid="nav-usuarios" onClick={() => setActiveTab('usuarios')} className={navBtnStyle('usuarios')}>
                     <Users className="w-3.5 h-3.5" /> Corpo Diretivo / Staff
                   </button>
                 )}
@@ -1692,7 +1697,7 @@ export default function App() {
               {user.role === 'admin' && (
                 <div className="space-y-1">
                   <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">INTEGRAÇÕES</span>
-                  <button onClick={() => setActiveTab('github')} className={navBtnStyle('github')}>
+                  <button data-testid="nav-github" onClick={() => setActiveTab('github')} className={navBtnStyle('github')}>
                     <Github className="w-3.5 h-3.5" /> Conexão GitHub
                   </button>
                 </div>
