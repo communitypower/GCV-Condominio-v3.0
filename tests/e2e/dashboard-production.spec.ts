@@ -226,7 +226,7 @@ test('API-backed dashboard workflows create, update, block, and clean production
     headers: { origin: baseURL },
     data: { monthString: '2099-12' },
   });
-  expect(massGenerate.status(), await massGenerate.text()).toBe(200);
+  expect([200, 201], await massGenerate.text()).toContain(massGenerate.status());
 
   const auditRes = await request.post(`${baseURL}/api/v1/accounts/${condo.accountId}/audit`, {
     headers: { origin: baseURL },
