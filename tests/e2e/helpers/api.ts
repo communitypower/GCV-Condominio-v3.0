@@ -23,6 +23,23 @@ export async function apiLogin(
   return response.json();
 }
 
+export async function e2eSessionLogin(request: APIRequestContext, baseURL: string, email = 'sindico@gcv.com.br') {
+  const secret = process.env.E2E_TEST_SECRET;
+  if (!secret) {
+    return apiLogin(request, baseURL, email, email === 'carlos.ramos@email.com' ? 'resident123' : 'sindico123');
+  }
+
+  const response = await request.post(`${baseURL}/api/v1/testing/session`, {
+    headers: {
+      origin: baseURL,
+      'x-e2e-secret': secret,
+    },
+    data: { email },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  return response.json();
+}
+
 export async function firstCondominium(request: APIRequestContext, baseURL: string) {
   const response = await request.get(`${baseURL}/api/v1/condominiums`);
   expect(response.ok(), await response.text()).toBeTruthy();

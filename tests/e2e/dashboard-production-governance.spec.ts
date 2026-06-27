@@ -1,5 +1,5 @@
 import { expect, request as playwrightRequest, test } from '@playwright/test';
-import { apiLogin, createTestBuilding, createTestUnit, expectStatus, firstCondominium } from './helpers/api';
+import { createTestBuilding, createTestUnit, e2eSessionLogin, expectStatus, firstCondominium } from './helpers/api';
 import { cleanupE2EData, TEST_PREFIX, uniqueName } from './helpers/cleanup';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
@@ -20,7 +20,7 @@ test('production API rejects unauthenticated, invalid, and resident-forbidden op
   const unauthenticated = await request.get(`${baseURL}/api/v1/condominiums`);
   await expectStatus(unauthenticated, 401);
 
-  await apiLogin(request, baseURL);
+  await e2eSessionLogin(request, baseURL);
   const condo = await firstCondominium(request, baseURL);
 
   const invalidBuilding = await request.post(`${baseURL}/api/v1/condominiums/${condo.id}/buildings`, {
@@ -87,7 +87,7 @@ test('production API rejects unauthenticated, invalid, and resident-forbidden op
 
   const residentContext = await playwrightRequest.newContext({ baseURL });
   try {
-    await apiLogin(residentContext, baseURL, 'carlos.ramos@email.com', 'resident123');
+    await e2eSessionLogin(residentContext, baseURL, 'carlos.ramos@email.com');
 
     const residentBuilding = await residentContext.post(`${baseURL}/api/v1/condominiums/${condo.id}/buildings`, {
       headers: { origin: baseURL },
@@ -114,7 +114,7 @@ test('production API rejects unauthenticated, invalid, and resident-forbidden op
 });
 
 test('production API supports full test-data lifecycle for buildings, units, plans, tickets, charges, residents, documents, and audit logs', async ({ request }) => {
-  await apiLogin(request, baseURL);
+  await e2eSessionLogin(request, baseURL);
   const condo = await firstCondominium(request, baseURL);
 
   const building = await createTestBuilding(request, baseURL, condo.id, uniqueName('BUILDING_FULL'));
