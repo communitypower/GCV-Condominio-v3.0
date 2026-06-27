@@ -99,6 +99,7 @@ router.post('/cleanup', async (req, res) => {
   results.unitRelationships = (await prisma.unitRelationship.deleteMany({ where: { unitId: { in: unitIds } } })).count;
   results.units = (await prisma.unit.deleteMany({ where: { id: { in: unitIds } } })).count;
 
+  results.users = (await prisma.user.deleteMany({ where: { email: { startsWith: 'test_e2e_' } } })).count;
   results.people = (await prisma.person.deleteMany({ where: { email: { startsWith: 'test_e2e_' } } })).count;
 
   results.buildings = (await prisma.building.deleteMany({ where: { name: { startsWith: TEST_PREFIX } } })).count;
