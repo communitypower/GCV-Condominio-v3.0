@@ -1143,7 +1143,17 @@ export default function App() {
   useEffect(() => {
     const handleAuthMessage = (event: MessageEvent) => {
       const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.startsWith('http://127.0.0.1')) {
+      const allowedOrigins = new Set([
+        window.location.origin,
+        'http://localhost:3000',
+        'http://localhost:3200',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:3200',
+      ]);
+      const isCloudRunOrigin = origin.endsWith('.run.app');
+      const isRailwayOrigin = origin.endsWith('.up.railway.app');
+
+      if (!allowedOrigins.has(origin) && !isCloudRunOrigin && !isRailwayOrigin) {
          return;
       }
 
@@ -1522,7 +1532,7 @@ export default function App() {
       </header>
 
       {/* Desktop Navigation Sidebar */}
-      <aside className="hidden md:flex w-64 bg-[#0F1115] border-r border-slate-800/40 flex-col shrink-0 print:hidden select-none max-h-screen overflow-y-auto">
+      <aside data-testid="dashboard-sidebar" className="hidden md:flex w-64 bg-[#0F1115] border-r border-slate-800/40 flex-col shrink-0 print:hidden select-none max-h-screen overflow-y-auto">
         <div className="p-5 border-b border-slate-850/60 space-y-4">
           <div>
             <h1 className="text-[#E2E8F0] text-lg font-black tracking-tight flex flex-col font-sans uppercase leading-tight">
@@ -1539,6 +1549,7 @@ export default function App() {
               <span className="text-lg shrink-0">{activeEdificio?.avatar || '🏢'}</span>
               <div className="min-w-0 flex-1">
                 <select
+                  data-testid="active-building-selector"
                   value={activeEdificioId}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -1721,7 +1732,7 @@ export default function App() {
 
       {/* Main Viewport Content block */}
       <div className="flex-1 flex flex-col min-h-0 w-full overflow-y-auto h-screen">
-        <main className="flex-1 px-4 sm:px-8 lg:px-10 py-10 w-full">
+        <main data-testid="dashboard-main" className="flex-1 px-4 sm:px-8 lg:px-10 py-10 w-full">
           {activeTab === 'dashboard' && (
             user.role === 'resident' ? (
               <div className="space-y-6 text-left">
