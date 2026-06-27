@@ -142,8 +142,11 @@ router.patch(
     const { status, assignedStaff, estimatedCost, actualCost } = req.body;
 
     try {
-      const existingTicket = await prisma.maintenanceTicket.findUnique({
-        where: { id: ticketId },
+      const existingTicket = await prisma.maintenanceTicket.findFirst({
+        where: {
+          id: ticketId,
+          condominiumId: req.params.condoId,
+        },
       });
 
       if (!existingTicket) {
@@ -191,8 +194,11 @@ router.post('/:condoId/tickets/:ticketId/comments', requireAuth, tenantGuard, va
   const { comment } = req.body;
 
   try {
-    const ticket = await prisma.maintenanceTicket.findUnique({
-      where: { id: ticketId },
+    const ticket = await prisma.maintenanceTicket.findFirst({
+      where: {
+        id: ticketId,
+        condominiumId: req.params.condoId,
+      },
     });
 
     if (!ticket) {

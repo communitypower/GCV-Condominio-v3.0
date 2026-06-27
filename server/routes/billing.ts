@@ -88,8 +88,11 @@ router.patch(
     const { status } = req.body;
 
     try {
-      const charge = await prisma.charge.findUnique({
-        where: { id: chargeId },
+      const charge = await prisma.charge.findFirst({
+        where: {
+          id: chargeId,
+          billingPeriod: { condominiumId: req.params.condoId },
+        },
       });
 
       if (!charge) {

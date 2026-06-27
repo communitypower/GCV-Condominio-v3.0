@@ -162,6 +162,16 @@ router.patch(
     const { planId } = req.params;
     const { status, nextOccurrence } = req.body;
     try {
+      const existingPlan = await prisma.maintenancePlan.findFirst({
+        where: {
+          id: planId,
+          condominiumId: req.params.condoId,
+        },
+      });
+      if (!existingPlan) {
+        return res.status(404).json({ error: "Plano não encontrado." });
+      }
+
       const updateData: any = {};
       if (status) updateData.status = status as PlanStatus;
       if (nextOccurrence) updateData.nextOccurrence = nextOccurrence;
@@ -184,10 +194,19 @@ router.delete(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
-  validateBody(updateEquipmentSchema),
   async (req, res) => {
     const { planId } = req.params;
     try {
+      const existingPlan = await prisma.maintenancePlan.findFirst({
+        where: {
+          id: planId,
+          condominiumId: req.params.condoId,
+        },
+      });
+      if (!existingPlan) {
+        return res.status(404).json({ error: "Plano não encontrado." });
+      }
+
       await prisma.maintenancePlan.delete({
         where: { id: planId },
       });
@@ -209,6 +228,16 @@ router.patch(
     const { eqId } = req.params;
     const { name, location, category, status, lastInspection, nextInspection } = req.body;
     try {
+      const existingEquipment = await prisma.equipment.findFirst({
+        where: {
+          id: eqId,
+          condominiumId: req.params.condoId,
+        },
+      });
+      if (!existingEquipment) {
+        return res.status(404).json({ error: "Equipamento não encontrado." });
+      }
+
       const updateData: any = {};
       if (name) updateData.name = name;
       if (location) updateData.location = location;

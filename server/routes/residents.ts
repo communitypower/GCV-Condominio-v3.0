@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PrismaClient, PlatformRole, RelationshipRole } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
+import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 
 const router = Router();
@@ -70,10 +71,11 @@ router.post(
       });
 
       if (!user) {
+        const passwordHash = await bcrypt.hash("resident123", 10);
         user = await prisma.user.create({
           data: {
             email,
-            passwordHash: "resident123",
+            passwordHash,
             personId: person.id,
           },
         });

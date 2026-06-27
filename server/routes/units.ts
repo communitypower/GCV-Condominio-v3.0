@@ -97,8 +97,11 @@ router.patch(
     const { status, type, fractionalShare, ownerName, ownerEmail, ownerPhone } = req.body;
 
     try {
-      const existingUnit = await prisma.unit.findUnique({
-        where: { id: unitId },
+      const existingUnit = await prisma.unit.findFirst({
+        where: {
+          id: unitId,
+          building: { condominiumId: req.params.condoId },
+        },
         include: { relationships: { include: { person: true } } },
       });
 

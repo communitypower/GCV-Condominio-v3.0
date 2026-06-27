@@ -153,6 +153,18 @@ router.post(
     const { title, category, requiredRole, unitId, filePath } = req.body;
 
     try {
+      if (unitId) {
+        const unit = await prisma.unit.findFirst({
+          where: {
+            id: unitId,
+            building: { condominiumId: condoId },
+          },
+        });
+        if (!unit) {
+          return res.status(400).json({ error: "Unidade inválida para este condomínio." });
+        }
+      }
+
       const document = await prisma.document.create({
         data: {
           condominiumId: condoId,
