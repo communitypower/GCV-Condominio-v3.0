@@ -6,8 +6,8 @@ const isProductionTarget = baseURL.includes('gcv-app-production-production.up.ra
 
 async function passwordLogin(page: Page, email = 'sindico@gcv.com.br', password = 'sindico123') {
   await page.goto('/');
-  await page.getByLabel('E-mail').fill(email);
-  await page.getByLabel('Senha').fill(password);
+  await page.getByPlaceholder('exemplo@email.com').fill(email);
+  await page.getByPlaceholder('Sua senha').fill(password);
   await page.getByRole('button', { name: /Entrar com E-mail/i }).click();
   await expect(page.getByText(/ENCERRAR SESSÃO/i)).toBeVisible();
 }
@@ -50,7 +50,7 @@ test('password session, dashboard shell, sidebar workflows, and logout work', as
 
   await expect(page.getByText(/GCV/i).first()).toBeVisible();
   await expect(page.getByText(/EDIFÍCIO ATIVO/i)).toBeVisible();
-  await expect(page.getByText(/Cassiano Marins/i)).toBeVisible();
+  await expect(page.getByTestId('dashboard-sidebar').getByText(/Cassiano Marins/i)).toBeVisible();
 
   const menuItems = [
     /ASSISTENTE IA/i,
