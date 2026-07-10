@@ -41,6 +41,31 @@ export default function Dashboard({
   const countPreventiva = requests.filter(r => r.priority === 'medium' || r.priority === 'low').length; // ~15
   const countCorretivaPlan = requests.filter(r => r.category === 'electrical' && r.priority === 'medium').length || 2; // ~2
   const countPreditiva = requests.filter(r => r.category === 'structural').length || 4; // ~4
+  const equipmentStatusData = [
+    { label: 'Operacional', value: countOperational, color: '#34d399' },
+    { label: 'Em manutenção', value: countMaintenance, color: '#fbbf24' },
+    { label: 'Alerta', value: countAlert, color: '#fb923c' },
+    { label: 'Crítico', value: countCritical, color: '#f87171' },
+  ];
+  const totalEquipmentStatus = equipmentStatusData.reduce((sum, item) => sum + item.value, 0);
+  const statusMax = Math.max(...equipmentStatusData.map((item) => item.value), 1);
+  const maintenanceTypeData = [
+    { label: 'Corretiva emerg.', shortLabel: 'Emerg.', value: countCorretivaEmerg, color: '#22d3ee' },
+    { label: 'Preventiva', shortLabel: 'Preventiva', value: countPreventiva, color: '#34d399' },
+    { label: 'Corretiva plan.', shortLabel: 'Planejada', value: countCorretivaPlan, color: '#fbbf24' },
+    { label: 'Preditiva', shortLabel: 'Preditiva', value: countPreditiva, color: '#f87171' },
+  ];
+  const maxMaintenanceType = Math.max(...maintenanceTypeData.map((item) => item.value), 1);
+  const yAxisMax = Math.max(4, Math.ceil(maxMaintenanceType / 4) * 4);
+  const yTicks = [yAxisMax, yAxisMax * 0.75, yAxisMax * 0.5, yAxisMax * 0.25, 0];
+  const chartTop = 24;
+  const chartHeight = 142;
+  const chartBottom = chartTop + chartHeight;
+  const chartLeft = 48;
+  const chartWidth = 300;
+  const donutRadius = 52;
+  const donutCircumference = 2 * Math.PI * donutRadius;
+  let statusDashOffset = donutCircumference * 0.25;
 
   return (
     <div className="space-y-6 text-slate-200">
@@ -106,85 +131,64 @@ export default function Dashboard({
               <span className="text-[#10b981] shrink-0 mt-0.5"><Wrench className="w-4 h-4" /></span>
               <h3 className="font-semibold text-white text-sm">Equipamentos por Status</h3>
             </div>
+            <span className="text-[11px] font-semibold text-zinc-300 tabular-nums">{totalEquipmentStatus} ativos</span>
           </div>
 
-          {/* High Fidelity SVG Donut Chart with alignment lines and labels pointing to sectors */}
-          <div className="relative w-full h-56 flex items-center justify-center my-2">
-            <svg viewBox="0 0 460 220" className="w-full h-full max-w-[440px]">
-              {/* Center Donut Hole at Coordinates (215, 110) */}
-              {/* Outer circle layout elements */}
-              <circle cx="215" cy="110" r="50" fill="transparent" stroke="#1f2229" strokeWidth="15" />
-              
-              {/* Green Segment: Operacional (18/23 ≈ 78.26% | Circumference C=314.16 | Arc=245.88 | Offset=-78.54 or 235.6) */}
-              <circle cx="215" cy="110" r="50" fill="transparent" 
-                stroke="#10b981" 
-                strokeWidth="15" 
-                strokeDasharray="245.9 314.16" 
-                strokeDashoffset="-23.5" // Rotated to match visual sector positioning
-              />
-
-              {/* Yellow/Orange: Em Manutenção (2/23 ≈ 8.70% | Arc=27.3) */}
-              <circle cx="215" cy="110" r="50" fill="transparent" 
-                stroke="#fab01c" 
-                strokeWidth="15" 
-                strokeDasharray="27.3 314.16" 
-                strokeDashoffset="-269.4" 
-              />
-
-              {/* Orange/Red-Orange: Alerta (2/23 ≈ 8.70% | Arc=27.3) */}
-              <circle cx="215" cy="110" r="50" fill="transparent" 
-                stroke="#f97316" 
-                strokeWidth="15" 
-                strokeDasharray="27.3 314.16" 
-                strokeDashoffset="-296.7" 
-              />
-
-              {/* Red: Crítico (1/23 ≈ 4.35% | Arc=13.7) */}
-              <circle cx="215" cy="110" r="50" fill="transparent" 
-                stroke="#ef4444" 
-                strokeWidth="15" 
-                strokeDasharray="13.7 314.16" 
-                strokeDashoffset="-324.0" 
-              />
-
-              {/* ---------------- DRAWING ALIGNMENT POINTERS AND LEGEND LABELS ---------------- */}
-              
-              {/* Pointer 1: Crítico (Red - Top) */}
-              {/* Arc angle around 70 deg | x_start = 215 + 50*cos(70deg) ≈ 232, y_start = 110 - 50*sin(70deg) ≈ 63 */}
-              <path d="M 215 52 L 210 33 H 190" fill="transparent" stroke="#852626" strokeWidth="1" />
-              <text x="185" y="32" className="text-[12px] font-semibold text-red-500 font-sans" fill="#ef4444" textAnchor="end">Crítico: {countCritical}</text>
-
-              {/* Pointer 2: Em Manutenção (Yellow - Top Right) */}
-              <path d="M 238 67 L 255 52 H 280" fill="transparent" stroke="#b8830f" strokeWidth="1" />
-              <text x="285" y="51" className="text-[12px] font-semibold text-amber-500 font-sans" fill="#fab01c" textAnchor="start">Em Manutenção: {countMaintenance}</text>
-
-              {/* Pointer 3: Alerta (Orange - Middle/Right) */}
-              <path d="M 264 94 L 285 106 H 310" fill="transparent" stroke="#b35412" strokeWidth="1" />
-              <text x="315" y="105" className="text-[12px] font-semibold text-orange-400 font-sans" fill="#f97316" textAnchor="start">Alerta: {countAlert}</text>
-
-              {/* Pointer 4: Operacional (Green - Bottom Left) */}
-              <path d="M 175 135 L 140 162 H 115" fill="transparent" stroke="#10573e" strokeWidth="1" />
-              <text x="110" y="161" className="text-[12px] font-semibold text-emerald-500 font-sans" fill="#10b981" textAnchor="end">Operacional: {countOperational}</text>
-            </svg>
-          </div>
-
-          {/* Color-code Legend Footer matched to the screenshot */}
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] font-semibold tracking-wide text-zinc-400 mt-2">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#f97316] block" />
-              <span>Alerta</span>
+          <div className="grid grid-cols-1 xl:grid-cols-[260px_1fr] gap-5 items-center min-h-[250px]">
+            <div className="relative h-56 flex items-center justify-center">
+              <svg viewBox="0 0 220 220" className="h-full w-full max-w-[220px]" role="img" aria-label="Distribuicao de equipamentos por status">
+                <circle cx="110" cy="110" r={donutRadius} fill="transparent" stroke="#252a33" strokeWidth="22" />
+                {equipmentStatusData.map((item) => {
+                  if (totalEquipmentStatus === 0 || item.value === 0) return null;
+                  const arcLength = (item.value / totalEquipmentStatus) * donutCircumference;
+                  const circle = (
+                    <circle
+                      key={item.label}
+                      cx="110"
+                      cy="110"
+                      r={donutRadius}
+                      fill="transparent"
+                      stroke={item.color}
+                      strokeWidth="22"
+                      strokeLinecap="round"
+                      strokeDasharray={`${arcLength} ${donutCircumference - arcLength}`}
+                      strokeDashoffset={-statusDashOffset}
+                      className="drop-shadow-[0_0_10px_rgba(16,185,129,0.12)]"
+                    />
+                  );
+                  statusDashOffset += arcLength;
+                  return circle;
+                })}
+                <circle cx="110" cy="110" r="31" fill="#14161b" stroke="#2f3540" strokeWidth="1" />
+                <text x="110" y="104" fill="#f8fafc" textAnchor="middle" className="text-[30px] font-bold tabular-nums">
+                  {totalEquipmentStatus}
+                </text>
+                <text x="110" y="125" fill="#a1a1aa" textAnchor="middle" className="text-[11px] font-semibold uppercase tracking-wide">
+                  ativos
+                </text>
+              </svg>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#fab01c] block" />
-              <span>Em Manutenção</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] block" />
-              <span>Crítico</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#10b981] block" />
-              <span>Operacional</span>
+
+            <div className="space-y-3">
+              {equipmentStatusData.map((item) => {
+                const percent = totalEquipmentStatus ? Math.round((item.value / totalEquipmentStatus) * 100) : 0;
+                const barWidth = `${Math.max(4, (item.value / statusMax) * 100)}%`;
+
+                return (
+                  <div key={item.label} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                        <span className="text-zinc-200 font-semibold truncate">{item.label}</span>
+                      </div>
+                      <span className="text-zinc-300 font-semibold tabular-nums">{item.value} · {percent}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-[#252a33] overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: barWidth, backgroundColor: item.color }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -196,55 +200,68 @@ export default function Dashboard({
               <span className="text-[#10b981] shrink-0 mt-0.5"><ClipboardList className="w-4 h-4" /></span>
               <h3 className="font-semibold text-white text-sm">Ordens por Tipo de Manutenção</h3>
             </div>
+            <span className="text-[11px] font-semibold text-zinc-300 tabular-nums">{requests.length} ordens</span>
           </div>
 
-          {/* Precision Custom Rendered SVG Bar Chart to perfectly emulate the picture layout */}
-          <div className="relative w-full h-56 mt-2 flex items-center justify-center">
-            <svg viewBox="0 0 380 185" className="w-full h-full max-w-[360px]">
-              {/* Horizontal Reference Grid dashed guidelines (Values: 4, 8, 12, 16) */}
-              {/* Chart area size: height=150, width=320, left_margin=30, bottom_margin=165 */}
-              {/* tick0: 165 - tick4: 127.5 - tick8: 90 - tick12: 52.5 - tick16: 15 */}
-              <line x1="30" y1="15" x2="350" y2="15" stroke="#1f2229" strokeWidth="1" strokeDasharray="3 3" />
-              <line x1="30" y1="52.5" x2="350" y2="52.5" stroke="#1f2229" strokeWidth="1" strokeDasharray="3 3" />
-              <line x1="30" y1="90" x2="350" y2="90" stroke="#1f2229" strokeWidth="1" strokeDasharray="3 3" />
-              <line x1="30" y1="127.5" x2="350" y2="127.5" stroke="#1f2229" strokeWidth="1" strokeDasharray="3 3" />
-              <line x1="30" y1="165" x2="350" y2="165" stroke="#2a2e38" strokeWidth="1" />
+          <div className="relative w-full h-64 mt-1 flex items-center justify-center">
+            <svg viewBox="0 0 400 230" className="w-full h-full max-w-[520px]" role="img" aria-label="Ordens por tipo de manutencao">
+              {yTicks.map((tick) => {
+                const y = chartTop + ((yAxisMax - tick) / yAxisMax) * chartHeight;
 
-              {/* Y Axis markings */}
-              <text x="24" y="19" className="text-[9px] text-zinc-500 font-mono" textAnchor="end">16</text>
-              <text x="24" y="56.5" className="text-[9px] text-zinc-500 font-mono" textAnchor="end">12</text>
-              <text x="24" y="94" className="text-[9px] text-zinc-500 font-mono" textAnchor="end">8</text>
-              <text x="24" y="131.5" className="text-[9px] text-zinc-500 font-mono" textAnchor="end">4</text>
-              <text x="24" y="169" className="text-[9px] text-zinc-500 font-mono" textAnchor="end">0</text>
+                return (
+                  <g key={tick}>
+                    <line
+                      x1={chartLeft}
+                      y1={y}
+                      x2={chartLeft + chartWidth}
+                      y2={y}
+                      stroke={tick === 0 ? '#3f4652' : '#2d333d'}
+                      strokeWidth={tick === 0 ? 1.3 : 1}
+                      strokeDasharray={tick === 0 ? undefined : '4 6'}
+                    />
+                    <text x={chartLeft - 14} y={y + 4} fill="#cbd5e1" className="text-[10px] font-semibold tabular-nums" textAnchor="end">
+                      {Math.round(tick)}
+                    </text>
+                  </g>
+                );
+              })}
 
-              {/* Vertical side divider axis line */}
-              <line x1="30" y1="15" x2="30" y2="165" stroke="#2a2e38" strokeWidth="1" />
+              <line x1={chartLeft} y1={chartTop} x2={chartLeft} y2={chartBottom} stroke="#3f4652" strokeWidth="1.2" />
 
-              {/* 1st Bar: Corretiva Emerg. (Value: 2 | height = 2/16 * 150 = 18.75px) */}
-              {/* x center: 70, width=22 */}
-              <rect x="59" y="146" width="22" height="19" fill="#06b6d4" rx="1.5" />
+              {maintenanceTypeData.map((item, index) => {
+                const slot = chartWidth / maintenanceTypeData.length;
+                const barWidth = 34;
+                const x = chartLeft + slot * index + slot / 2 - barWidth / 2;
+                const barHeight = (item.value / yAxisMax) * chartHeight;
+                const y = chartBottom - barHeight;
 
-              {/* 2nd Bar: Preventiva (Value: 16 | height = 150px) */}
-              {/* x center: 150, width=22 */}
-              <rect x="139" y="15" width="22" height="150" fill="#10b981" rx="1.5" />
-
-              {/* 3rd Bar: Corretiva Plan. (Value: 2 | height = 18.75px) */}
-              {/* x center: 230, width=22 */}
-              <rect x="219" y="146" width="22" height="19" fill="#fab01c" rx="1.5" />
-
-              {/* 4th Bar: Preditiva (Value: 4 | height = 4/16 * 150 = 37.5px) */}
-              {/* x center: 310, width=22 */}
-              <rect x="299" y="127.5" width="22" height="37.5" fill="#ef4444" rx="1.5" />
-
-              {/* X Axis Labels under columns */}
-              <text x="70" y="179" className="text-[8px] text-zinc-400 font-semibold" textAnchor="middle">Corretiva Emerg.</text>
-              <text x="150" y="179" className="text-[8px] text-zinc-400 font-semibold" textAnchor="middle">Preventiva</text>
-              <text x="230" y="179" className="text-[8px] text-zinc-400 font-semibold" textAnchor="middle">Corretiva Plan.</text>
-              <text x="310" y="179" className="text-[8px] text-zinc-400 font-semibold" textAnchor="middle">Preditiva</text>
+                return (
+                  <g key={item.label}>
+                    <rect x={x - 5} y={chartTop} width={barWidth + 10} height={chartHeight} fill={index % 2 === 0 ? '#171a20' : '#15181e'} opacity="0.55" rx="6" />
+                    <rect x={x} y={y} width={barWidth} height={Math.max(2, barHeight)} fill={item.color} rx="5" />
+                    <text x={x + barWidth / 2} y={Math.max(chartTop + 12, y - 8)} fill="#f8fafc" className="text-[12px] font-bold tabular-nums" textAnchor="middle">
+                      {item.value}
+                    </text>
+                    <text x={x + barWidth / 2} y="190" fill="#e4e4e7" className="text-[10px] font-semibold" textAnchor="middle">
+                      {item.shortLabel}
+                    </text>
+                    <text x={x + barWidth / 2} y="206" fill="#8b93a3" className="text-[9px] font-medium" textAnchor="middle">
+                      {item.label}
+                    </text>
+                  </g>
+                );
+              })}
             </svg>
           </div>
           
-          <div className="h-4" /> {/* empty buffer spatial padding */}
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] font-semibold text-zinc-300">
+            {maintenanceTypeData.map((item) => (
+              <div key={item.label} className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                <span>{item.shortLabel}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
