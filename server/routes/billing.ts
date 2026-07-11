@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PrismaClient, PlatformRole, BillingStatus } from '@prisma/client';
+import { Prisma, PrismaClient, PlatformRole, BillingStatus } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
 import { z } from 'zod';
@@ -149,19 +149,17 @@ router.post(
     const { unitId, monthString, amount, dueDate, description } = req.body;
 
     try {
-      // Find or create the billing period for this month and condominium
-      let billingPeriod = await prisma.billingPeriod.findFirst({
-        where: { condominiumId: condoId, monthString },
+      const unit = await prisma.unit.findFirst({
+        where: { id: unitId, building: { condominiumId: condoId } },
       });
+      if (!unit) return res.status(400).json({ error: "Unidade não encontrada neste condomínio." });
 
-      if (!billingPeriod) {
-        billingPeriod = await prisma.billingPeriod.create({
-          data: {
-            condominiumId: condoId,
-            monthString,
-          },
-        });
-      }
+      // Find or create the billing period for this month and condominium
+      const billingPeriod = await prisma.billingPeriod.upsert({
+        where: { condominiumId_monthString: { condominiumId: condoId, monthString } },
+        create: { condominiumId: condoId, monthString },
+        update: {},
+      });
 
       // Generate a mock barcode and pix Qr code
       const barcode = '34191.79001 01043.513184 91020.150008 7 97130000' + Math.floor(amount * 100).toString().padStart(6, '0');
@@ -185,6 +183,9 @@ router.post(
 
       res.status(201).json(charge);
     } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return res.status(409).json({ error: "Já existe uma cobrança para esta unidade e competência." });
+      }
       console.error("Create Charge Error:", error);
       res.status(500).json({ error: "Erro ao criar cobrança." });
     }
@@ -212,18 +213,11 @@ router.post(
       });
 
       // Find or create billing period
-      let billingPeriod = await prisma.billingPeriod.findFirst({
-        where: { condominiumId: condoId, monthString },
+      const billingPeriod = await prisma.billingPeriod.upsert({
+        where: { condominiumId_monthString: { condominiumId: condoId, monthString } },
+        create: { condominiumId: condoId, monthString },
+        update: {},
       });
-
-      if (!billingPeriod) {
-        billingPeriod = await prisma.billingPeriod.create({
-          data: {
-            condominiumId: condoId,
-            monthString,
-          },
-        });
-      }
 
       // Find existing charges of this month
       const existingCharges = await prisma.charge.findMany({

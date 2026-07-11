@@ -27,19 +27,10 @@ import {
   Landmark,
   ShieldCheck,
   ArrowRight,
-  Github
+  Github,
+  Database
 } from 'lucide-react';
 import { Unit, Billing, MaintenanceRequest, Equipment, MaintenancePlan, OperationLog, PurchaseRequest, PaymentOrder, Edificio } from './types';
-import { 
-  INITIAL_UNITS, 
-  INITIAL_BILLINGS, 
-  INITIAL_MAINTENANCE,
-  INITIAL_EQUIPMENTS,
-  INITIAL_PLANS,
-  INITIAL_LOGS,
-  INITIAL_PURCHASES,
-  INITIAL_PAYMENTS
-} from './initialData';
 
 // Component Imports
 import Dashboard from './components/Dashboard';
@@ -60,6 +51,7 @@ import Condominos from './components/Condominos';
 import UsersList from './components/UsersList';
 import AIAssistent from './components/AIAssistent';
 import GitHubIntegration from './components/GitHubIntegration';
+import DataImports from './components/DataImports';
 
 interface LoggedInUser {
   name: string;
@@ -104,23 +96,14 @@ export default function App() {
     | 'planos' | 'ordens' | 'logs'
     | 'documentacao' | 'bim' | 'ciclovida' | 'compras'
     | 'condominos' | 'cobrancas' | 'pagamentos' | 'demonstrativos'
-    | 'notificacoes' | 'usuarios' | 'ia_assistant' | 'github';
+    | 'notificacoes' | 'usuarios' | 'ia_assistant' | 'github' | 'carga_dados';
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // GitHub integration states
-  const [githubToken, setGithubToken] = useState<string | null>(() => {
-    return localStorage.getItem('gcv_github_token');
-  });
-  const [githubProfile, setGithubProfile] = useState<any | null>(() => {
-    const saved = localStorage.getItem('gcv_github_profile');
-    try {
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  const [githubToken, setGithubToken] = useState<string | null>(null);
+  const [githubProfile, setGithubProfile] = useState<any | null>(null);
 
   // States for creating new buildings/edificios
   const [newEdificioModalOpen, setNewEdificioModalOpen] = useState(false);
@@ -140,35 +123,15 @@ export default function App() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [microsoftLoading, setMicrosoftLoading] = useState(false);
 
-  // States initialized from localStorage or initial mock files, separated by building
-  const [edificios, setEdificios] = useState<Edificio[]>(() => {
-    const saved = localStorage.getItem('gcv_edificios');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return [
-      {
-        id: 'bela_vista',
-        name: 'Bela Vista Premium',
-        address: 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
-        avatar: '🏢',
-        createdAt: '2026-05-01'
-      },
-      {
-        id: 'morada_sol',
-        name: 'Morada do Sol Residencial',
-        address: 'Av. Atlântica, 4500 - Copacabana, Rio de Janeiro - RJ',
-        avatar: '☀️',
-        createdAt: '2026-05-15'
-      }
-    ];
-  });
+  const [edificios, setEdificios] = useState<Edificio[]>([]);
 
   const [activeEdificioId, setActiveEdificioId] = useState<string>(() => {
     return localStorage.getItem('gcv_active_edificio_id') || 'bela_vista';
   });
 
-  const activeEdificio = edificios.find(e => e.id === activeEdificioId) || edificios[0];
+  const activeEdificio = edificios.find(e => e.id === activeEdificioId) || edificios[0] || {
+    id: '', name: 'Carregando condomínio...', address: '', avatar: '🏢', createdAt: ''
+  };
 
   const [units, setUnits] = useState<Unit[]>([]);
   const [billings, setBillings] = useState<Billing[]>([]);
@@ -178,6 +141,10 @@ export default function App() {
   const [logs, setLogs] = useState<OperationLog[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRequest[]>([]);
   const [payments, setPayments] = useState<PaymentOrder[]>([]);
+  const [purchasesLoading, setPurchasesLoading] = useState(false);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [purchasesError, setPurchasesError] = useState<string | null>(null);
+  const [paymentsError, setPaymentsError] = useState<string | null>(null);
   
   // App simulated parameters
   const [currentMonth, setCurrentMonth] = useState('2026-05'); // Current active month simulation
@@ -254,6 +221,10 @@ export default function App() {
     localStorage.setItem('gcv_active_edificio_id', activeEdificioId);
 
     const loadData = async () => {
+      setPurchasesLoading(true);
+      setPaymentsLoading(true);
+      setPurchasesError(null);
+      setPaymentsError(null);
       try {
         // 1. Units load
         const unitsRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/units`);
@@ -364,73 +335,35 @@ export default function App() {
             setLogs(mappedLogs);
           }
         }
+
+        const purchasesRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/purchase-requests`);
+        if (!purchasesRes.ok) {
+          const payload = await purchasesRes.json().catch(() => null);
+          setPurchasesError(payload?.error || 'Erro ao carregar requisições de compra.');
+          setPurchases([]);
+        } else {
+          setPurchases(await purchasesRes.json());
+        }
+
+        const paymentsRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/payment-orders`);
+        if (!paymentsRes.ok) {
+          const payload = await paymentsRes.json().catch(() => null);
+          setPaymentsError(payload?.error || 'Erro ao carregar ordens de pagamento.');
+          setPayments([]);
+        } else {
+          setPayments(await paymentsRes.json());
+        }
       } catch (error) {
         console.error("Error loading data from API:", error);
+        setPurchasesError('Não foi possível carregar as requisições de compra.');
+        setPaymentsError('Não foi possível carregar as ordens de pagamento.');
+      } finally {
+        setPurchasesLoading(false);
+        setPaymentsLoading(false);
       }
     };
     loadData();
-
-    // 7. Purchases load (Local state only)
-    const storedPurchases = localStorage.getItem(`gcv_purchases_${activeEdificioId}`);
-    let loadedPurchases = INITIAL_PURCHASES;
-    if (storedPurchases) {
-      try { loadedPurchases = JSON.parse(storedPurchases); } catch (e) {}
-    } else {
-      loadedPurchases = [];
-    }
-    setPurchases(loadedPurchases);
-
-    // 8. Payments load (Local state only)
-    const storedPayments = localStorage.getItem(`gcv_payments_${activeEdificioId}`);
-    let loadedPayments = INITIAL_PAYMENTS;
-    if (storedPayments) {
-      try { loadedPayments = JSON.parse(storedPayments); } catch (e) {}
-    } else {
-      loadedPayments = [];
-    }
-    setPayments(loadedPayments);
   }, [activeEdificioId, user]);
-
-  // Write handlers and dispatchers back to storage
-  const saveUnitsToStorage = (updatedList: Unit[]) => {
-    setUnits(updatedList);
-    localStorage.setItem(`gcv_units_${activeEdificioId}`, JSON.stringify(updatedList));
-  };
-
-  const saveBillingsToStorage = (updatedList: Billing[]) => {
-    setBillings(updatedList);
-    localStorage.setItem(`gcv_billings_${activeEdificioId}`, JSON.stringify(updatedList));
-  };
-
-  const saveMaintenanceToStorage = (updatedList: MaintenanceRequest[]) => {
-    setMaintenanceRequests(updatedList);
-    localStorage.setItem(`gcv_maintenance_${activeEdificioId}`, JSON.stringify(updatedList));
-  };
-
-  const saveEquipmentsToStorage = (list: Equipment[]) => {
-    setEquipments(list);
-    localStorage.setItem(`gcv_equipments_${activeEdificioId}`, JSON.stringify(list));
-  };
-
-  const savePlansToStorage = (list: MaintenancePlan[]) => {
-    setPlans(list);
-    localStorage.setItem(`gcv_plans_${activeEdificioId}`, JSON.stringify(list));
-  };
-
-  const saveLogsToStorage = (list: OperationLog[]) => {
-    setLogs(list);
-    localStorage.setItem(`gcv_logs_${activeEdificioId}`, JSON.stringify(list));
-  };
-
-  const savePurchasesToStorage = (list: PurchaseRequest[]) => {
-    setPurchases(list);
-    localStorage.setItem(`gcv_purchases_${activeEdificioId}`, JSON.stringify(list));
-  };
-
-  const savePaymentsToStorage = (list: PaymentOrder[]) => {
-    setPayments(list);
-    localStorage.setItem(`gcv_payments_${activeEdificioId}`, JSON.stringify(list));
-  };
 
   // Trigger brief alert notifications
   const triggerNotification = (message: string, type: 'success' | 'info' = 'success') => {
@@ -989,48 +922,85 @@ export default function App() {
     }
   };
 
-  const handleApprovePurchase = (id: string) => {
-    const updated = purchases.map(p => {
-      if (p.id === id) {
-        return { ...p, status: 'approved' as const };
-      }
-      return p;
+  const mutatePurchaseStatus = async (id: string, status: 'approved' | 'rejected') => {
+    setPurchasesError(null);
+    const action = status === 'approved' ? 'approve' : 'reject';
+    const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/purchase-requests/${id}/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     });
-    savePurchasesToStorage(updated);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message = payload?.error || 'Erro ao atualizar requisição de compra.';
+      setPurchasesError(message);
+      throw new Error(message);
+    }
+    const updated = await response.json();
+    setPurchases(current => current.map(item => item.id === id ? updated : item));
+  };
+
+  const handleApprovePurchase = async (id: string) => {
+    await mutatePurchaseStatus(id, 'approved');
     triggerNotification(`Requisição ${id} aprovada! Verba liberada.`);
   };
 
-  const handleRejectPurchase = (id: string) => {
-    const updated = purchases.map(p => {
-      if (p.id === id) {
-        return { ...p, status: 'rejected' as const };
-      }
-      return p;
-    });
-    savePurchasesToStorage(updated);
+  const handleRejectPurchase = async (id: string) => {
+    await mutatePurchaseStatus(id, 'rejected');
     triggerNotification(`Requisição ${id} cancelada.`);
   };
 
-  const handleAddPurchase = (newReq: PurchaseRequest) => {
-    const updated = [newReq, ...purchases];
-    savePurchasesToStorage(updated);
-    triggerNotification(`Lançada proposta de compra ${newReq.id} sob análise.`);
-  };
-
-  const handleAddPayment = (newPay: PaymentOrder) => {
-    const updated = [newPay, ...payments];
-    savePaymentsToStorage(updated);
-    triggerNotification(`Ordem de Pagamento ${newPay.id} criada.`);
-  };
-
-  const handlePayPayment = (id: string) => {
-    const updated = payments.map(p => {
-      if (p.id === id) {
-        return { ...p, status: 'paid' as const };
-      }
-      return p;
+  const handleAddPurchase = async (newReq: Omit<PurchaseRequest, 'id' | 'status' | 'requester' | 'createdAt'>) => {
+    setPurchasesError(null);
+    const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/purchase-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newReq),
     });
-    savePaymentsToStorage(updated);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message = payload?.error || 'Erro ao criar requisição de compra.';
+      setPurchasesError(message);
+      throw new Error(message);
+    }
+    const created = await response.json();
+    setPurchases(current => [created, ...current]);
+    triggerNotification(`Lançada proposta de compra ${created.id} sob análise.`);
+  };
+
+  const handleAddPayment = async (newPay: Omit<PaymentOrder, 'id' | 'status' | 'paidAt' | 'createdAt'>) => {
+    setPaymentsError(null);
+    const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/payment-orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newPay),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message = payload?.error || 'Erro ao criar ordem de pagamento.';
+      setPaymentsError(message);
+      throw new Error(message);
+    }
+    const created = await response.json();
+    setPayments(current => [created, ...current]);
+    triggerNotification(`Ordem de Pagamento ${created.id} criada.`);
+  };
+
+  const handlePayPayment = async (id: string) => {
+    setPaymentsError(null);
+    const response = await fetch(`/api/v1/condominiums/${activeEdificioId}/payment-orders/${id}/pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message = payload?.error || 'Erro ao liquidar ordem de pagamento.';
+      setPaymentsError(message);
+      throw new Error(message);
+    }
+    const updated = await response.json();
+    setPayments(current => current.map(item => item.id === id ? updated : item));
     triggerNotification(`Fatura ${id} quitada e registrada no balanço!`);
   };
 
@@ -1204,50 +1174,39 @@ export default function App() {
     triggerNotification('Sessão encerrada com sucesso.');
   };
 
-  // System State Reset to Mock defaults (Excellent helper utility)
+  // Reload persisted state without creating browser-only business records.
   const handleResetSystemData = () => {
-    if (confirm('Deseja realmente redefinir todos os dados cadastrais para o padrão de fábrica? Quaisquer modificações recentes serão perdidas.')) {
-      localStorage.clear();
-      setUnits(INITIAL_UNITS);
-      setBillings(INITIAL_BILLINGS);
-      setMaintenanceRequests(INITIAL_MAINTENANCE);
-      setEquipments(INITIAL_EQUIPMENTS);
-      setPlans(INITIAL_PLANS);
-      setLogs(INITIAL_LOGS);
-      setPurchases(INITIAL_PURCHASES);
-      setPayments(INITIAL_PAYMENTS);
-      setActiveTab('dashboard');
-      triggerNotification('O sistema retornou com sucesso para a base original de dados!');
+    if (confirm('Recarregar os dados persistidos no servidor?')) {
+      localStorage.removeItem('gcv_active_edificio_id');
+      window.location.reload();
     }
   };
 
-  const handleAddEdificio = (e: React.FormEvent) => {
+  const handleAddEdificio = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEdificioName.trim()) return;
+    const accountId = user?.accountId || user?.memberships?.[0]?.accountId;
+    if (!accountId) return triggerNotification('Conta não identificada.', 'info');
 
-    const newId = newEdificioName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
-    const newEdificio: Edificio = {
-      id: newId,
-      name: newEdificioName,
-      address: newEdificioAddress || 'Sem endereço registrado',
-      avatar: newEdificioAvatar,
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-
-    const updated = [...edificios, newEdificio];
-    setEdificios(updated);
-    localStorage.setItem('gcv_edificios', JSON.stringify(updated));
-
-    // Auto-switch to newly created building
-    setActiveEdificioId(newId);
-    setNewEdificioModalOpen(false);
-
-    // Reset fields
-    setNewEdificioName('');
-    setNewEdificioAddress('');
-    setNewEdificioAvatar('🏢');
-
-    triggerNotification(`Edifício "${newEdificioName}" registrado com sucesso!`);
+    try {
+      const response = await fetch('/api/v1/condominiums', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newEdificioName, address: newEdificioAddress || 'Sem endereço registrado', accountId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Erro ao cadastrar condomínio.');
+      const created: Edificio = { id: data.id, name: data.name, address: data.address, avatar: newEdificioAvatar, createdAt: data.createdAt };
+      setEdificios((current) => [...current, created]);
+      setActiveEdificioId(created.id);
+      setNewEdificioModalOpen(false);
+      setNewEdificioName('');
+      setNewEdificioAddress('');
+      setNewEdificioAvatar('🏢');
+      triggerNotification(`Edifício "${created.name}" registrado com sucesso!`);
+    } catch (error) {
+      triggerNotification(error instanceof Error ? error.message : 'Erro ao cadastrar condomínio.', 'info');
+    }
   };
 
   // Helper function to render active navigation styles
@@ -1478,7 +1437,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleResetSystemData}
-                title="Restaurar base original"
+                title="Recarregar dados do servidor"
                 className="p-1.5 rounded bg-slate-800/50 text-slate-400 hover:text-white"
               >
                 <FolderSync className="w-4 h-4" />
@@ -1691,6 +1650,11 @@ export default function App() {
                     <Users className="w-3.5 h-3.5" /> Corpo Diretivo / Staff
                   </button>
                 )}
+                {user.role !== 'resident' && (
+                  <button data-testid="nav-carga-dados" onClick={() => setActiveTab('carga_dados')} className={navBtnStyle('carga_dados')}>
+                    <Database className="w-3.5 h-3.5" /> Carga de Dados
+                  </button>
+                )}
               </div>
 
               {/* Group 6: SISTEMA */}
@@ -1726,10 +1690,10 @@ export default function App() {
             </button>
             <button
               onClick={handleResetSystemData}
-              title="Restaurar base original"
+              title="Recarregar dados do servidor"
               className="w-full text-zinc-500 hover:text-[#10b981] hover:bg-white/5 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all text-center"
             >
-              <FolderSync className="w-3 h-3" /> Redefinir Dados
+              <FolderSync className="w-3 h-3" /> Recarregar Dados
             </button>
           </div>
         </div>
@@ -1913,6 +1877,10 @@ export default function App() {
             <Documentation condoId={activeEdificioId} />
           )}
 
+          {activeTab === 'carga_dados' && (
+            <DataImports condoId={activeEdificioId} />
+          )}
+
           {activeTab === 'bim' && (
             <BimViewer 
               equipments={equipments}
@@ -1927,6 +1895,8 @@ export default function App() {
           {activeTab === 'compras' && (
             <PurchaseRequests 
               purchases={purchases}
+              loading={purchasesLoading}
+              error={purchasesError}
               onApprove={handleApprovePurchase}
               onReject={handleRejectPurchase}
               onAddRequest={handleAddPurchase}
@@ -1951,21 +1921,23 @@ export default function App() {
           {activeTab === 'pagamentos' && (
             <PaymentOrders 
               payments={payments}
+              loading={paymentsLoading}
+              error={paymentsError}
               onAddPayment={handleAddPayment}
               onPay={handlePayPayment}
             />
           )}
 
           {activeTab === 'demonstrativos' && (
-            <Demonstrativos />
+            <Demonstrativos billings={billings} payments={payments} loading={paymentsLoading} />
           )}
 
           {activeTab === 'notificacoes' && (
-            <Notifications />
+            <Notifications condoId={activeEdificioId} />
           )}
 
           {activeTab === 'usuarios' && (
-            <UsersList />
+            <UsersList condoId={activeEdificioId} />
           )}
 
           {activeTab === 'ia_assistant' && (
@@ -1989,14 +1961,10 @@ export default function App() {
               onConnectSuccess={(token, profile) => {
                 setGithubToken(token);
                 setGithubProfile(profile);
-                localStorage.setItem('gcv_github_token', token);
-                localStorage.setItem('gcv_github_profile', JSON.stringify(profile));
               }}
               onDisconnect={() => {
                 setGithubToken(null);
                 setGithubProfile(null);
-                localStorage.removeItem('gcv_github_token');
-                localStorage.removeItem('gcv_github_profile');
               }}
               condoData={{
                 unitsCount: units.length,

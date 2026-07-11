@@ -4,12 +4,16 @@ import { PaymentOrder } from '../types';
 
 interface PaymentOrdersProps {
   payments: PaymentOrder[];
-  onAddPayment: (newPay: PaymentOrder) => void;
-  onPay: (id: string) => void;
+  loading: boolean;
+  error: string | null;
+  onAddPayment: (newPay: Omit<PaymentOrder, 'id' | 'status' | 'paidAt' | 'createdAt'>) => Promise<void>;
+  onPay: (id: string) => Promise<void>;
 }
 
 export default function PaymentOrders({
   payments,
+  loading,
+  error,
   onAddPayment,
   onPay
 }: PaymentOrdersProps) {
@@ -17,31 +21,45 @@ export default function PaymentOrders({
   const [payee, setPayee] = useState('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
-  const [dueDate, setDueDate] = useState('2026-05-30');
+  const [dueDate, setDueDate] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payee.trim() || !description.trim() || !amount) {
       alert('Preencha os dados do boleto/fatura.');
       return;
     }
-    const newPay: PaymentOrder = {
-      id: `PAG-${String(payments.length + 1).padStart(2, '0')}`,
-      recipient: payee,
-      description,
-      amount: parseFloat(amount),
-      dueDate,
-      status: 'pending'
-    };
-    onAddPayment(newPay);
-    setShowAdd(false);
-    setPayee('');
-    setDescription('');
-    setAmount('');
+    if (!dueDate) return;
+    setSubmitting(true);
+    try {
+      await onAddPayment({ recipient: payee, description, amount: parseFloat(amount), dueDate });
+      setShowAdd(false);
+      setPayee('');
+      setDescription('');
+      setAmount('');
+      setDueDate('');
+    } catch {
+      // The parent exposes the API error in the page state.
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePay = async (id: string) => {
+    setPayingId(id);
+    try {
+      await onPay(id);
+    } catch {
+      // The parent exposes the API error in the page state.
+    } finally {
+      setPayingId(null);
+    }
   };
 
   return (
@@ -63,6 +81,9 @@ export default function PaymentOrders({
         </button>
       </div>
 
+      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+      {loading && <div className="rounded-lg border border-zinc-800 bg-[#14161b] p-6 text-center text-sm text-zinc-400">Carregando ordens de pagamento...</div>}
+
       <div className="bg-[#14161b] rounded-xl border border-zinc-800 overflow-hidden">
         <div className="p-4 border-b border-zinc-850 bg-[#0d0e12]/40 text-xs font-bold text-zinc-400 grid grid-cols-12 gap-4">
           <div className="col-span-2">ID DO LANÇAM.</div>
@@ -74,6 +95,7 @@ export default function PaymentOrders({
         </div>
 
         <div className="divide-y divide-zinc-850">
+          {!loading && !error && payments.length === 0 && <div className="p-6 text-center text-sm text-zinc-400">Nenhuma ordem de pagamento cadastrada.</div>}
           {payments.map(p => (
             <div key={p.id} className="p-4 grid grid-cols-12 gap-4 text-xs items-center hover:bg-zinc-850/20 transition-colors">
               <div className="col-span-2 font-mono text-zinc-500 font-bold">{p.id}</div>
@@ -87,12 +109,15 @@ export default function PaymentOrders({
                   <span className="text-emerald-500 font-bold flex items-center justify-end gap-1 text-[11px]">
                     <Check className="w-4 h-4" /> Pago
                   </span>
+                ) : p.status === 'cancelled' ? (
+                  <span className="text-zinc-500 font-bold text-[11px]">Cancelado</span>
                 ) : (
                   <button
-                    onClick={() => onPay(p.id)}
+                    onClick={() => handlePay(p.id)}
+                    disabled={payingId !== null}
                     className="px-2 py-1 bg-[#10b981] text-white font-bold uppercase rounded hover:bg-emerald-600 transition-colors text-[10px]"
                   >
-                    Liquidar
+                    {payingId === p.id ? 'Liquidando...' : 'Liquidar'}
                   </button>
                 )}
               </div>
@@ -158,9 +183,10 @@ export default function PaymentOrders({
 
               <button 
                 type="submit"
+                disabled={submitting}
                 className="w-full py-2.5 bg-[#10b981] text-white font-bold uppercase rounded hover:bg-[#009267] transition-all"
               >
-                Autorizar Ordem de Saída
+                {submitting ? 'Salvando...' : 'Autorizar Ordem de Saída'}
               </button>
             </form>
           </div>

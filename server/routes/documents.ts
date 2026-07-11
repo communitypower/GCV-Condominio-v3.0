@@ -8,14 +8,31 @@ import { z } from 'zod';
 
 const router = Router();
 const prisma = new PrismaClient();
+const documentStorageRoot = path.resolve(process.env.DOCUMENT_STORAGE_PATH || 'uploads');
+
+const safeDocumentPath = z.string().trim().min(1).max(500).refine(
+  (value) => !path.isAbsolute(value) && !value.split(/[\\/]+/).includes('..'),
+  'O caminho do documento deve ser relativo e não pode sair do diretório de armazenamento.'
+);
 
 const createDocumentSchema = z.object({
   title: z.string().trim().min(1).max(180),
   category: z.string().trim().min(1).max(80),
   requiredRole: z.enum(PlatformRole).optional(),
   unitId: z.string().uuid().optional().nullable(),
-  filePath: z.string().trim().min(1).max(500),
+  filePath: safeDocumentPath,
 });
+
+export function latestDocumentVersion<T extends { versionNumber: number }>(versions: T[]) {
+  return versions.reduce<T | null>((latest, version) =>
+    !latest || version.versionNumber > latest.versionNumber ? version : latest, null);
+}
+
+export function resolveStoredDocumentPath(filePath: string) {
+  const relativePath = filePath.replace(/^uploads[\\/]/, '');
+  const absolutePath = path.resolve(documentStorageRoot, relativePath);
+  return absolutePath.startsWith(`${documentStorageRoot}${path.sep}`) ? absolutePath : null;
+}
 
 // GET /api/v1/condominiums/:condoId/documents
 router.get('/:condoId/documents', requireAuth, tenantGuard, async (req: any, res) => {
@@ -105,36 +122,41 @@ router.get('/:condoId/documents/:docId/download', requireAuth, tenantGuard, asyn
     }
 
     // Resolve version file path
-    const latestVersion = document.versions.reduce((prev, current) =>
-      prev.versionNumber > current.versionNumber ? prev : current
-    );
-
-    const absolutePath = path.resolve(latestVersion.filePath);
-
-    // Audit log document access
-    const condo = await prisma.condominium.findUnique({ where: { id: condoId } });
-    if (condo) {
-      await prisma.auditEvent.create({
-        data: {
-          accountId: condo.accountId,
-          userId: req.user.id,
-          userEmail: req.user.email,
-          action: 'document_access',
-          entity: 'Document',
-          entityId: document.id,
-          details: `Download do documento "${document.title}" realizado com sucesso.`,
-        },
-      });
+    const latestVersion = latestDocumentVersion(document.versions);
+    if (!latestVersion) {
+      return res.status(410).json({ error: 'Documento indisponível: nenhuma versão foi registrada.' });
     }
 
-    if (!fs.existsSync(absolutePath)) {
-      // Fallback for testing/simulated environments if the physical file doesn't exist
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${document.title}.pdf"`);
-      return res.send(`%PDF-1.4 Simulated GCV Document Content for: ${document.title}`);
+    const absolutePath = resolveStoredDocumentPath(latestVersion.filePath);
+    if (!absolutePath || !fs.existsSync(absolutePath)) {
+      return res.status(410).json({ error: 'Documento indisponível no armazenamento.' });
     }
 
-    res.download(absolutePath, `${document.title}${path.extname(absolutePath)}`);
+    res.download(absolutePath, `${document.title}${path.extname(absolutePath)}`, async (downloadError) => {
+      if (downloadError) {
+        console.error('Download Document Transfer Error:', downloadError);
+        if (!res.headersSent) res.status(404).json({ error: 'Documento não pôde ser transferido.' });
+        return;
+      }
+      try {
+        const condo = await prisma.condominium.findUnique({ where: { id: condoId }, select: { accountId: true } });
+        if (condo) {
+          await prisma.auditEvent.create({
+            data: {
+              accountId: condo.accountId,
+              userId: req.user.id,
+              userEmail: req.user.email,
+              action: 'document_access',
+              entity: 'Document',
+              entityId: document.id,
+              details: `Download do documento "${document.title}" realizado com sucesso.`,
+            },
+          });
+        }
+      } catch (auditError) {
+        console.error('Document Download Audit Error:', auditError);
+      }
+    });
   } catch (error) {
     console.error("Download Document Error:", error);
     res.status(500).json({ error: "Erro ao baixar documento." });
@@ -153,40 +175,34 @@ router.post(
     const { title, category, requiredRole, unitId, filePath } = req.body;
 
     try {
-      if (unitId) {
-        const unit = await prisma.unit.findFirst({
-          where: {
-            id: unitId,
-            building: { condominiumId: condoId },
-          },
-        });
-        if (!unit) {
-          return res.status(400).json({ error: "Unidade inválida para este condomínio." });
+      const document = await prisma.$transaction(async (tx) => {
+        if (unitId) {
+          const unit = await tx.unit.findFirst({
+            where: { id: unitId, building: { condominiumId: condoId } },
+            select: { id: true },
+          });
+          if (!unit) throw new Error('INVALID_DOCUMENT_UNIT');
         }
-      }
 
-      const document = await prisma.document.create({
-        data: {
-          condominiumId: condoId,
-          unitId: unitId || null,
-          title,
-          category,
-          requiredRole: (requiredRole as PlatformRole) || PlatformRole.resident,
-          filePath,
-        },
-      });
-
-      await prisma.documentVersion.create({
-        data: {
-          documentId: document.id,
-          versionNumber: 1,
-          filePath,
-          uploadedBy: req.user.email,
-        },
+        return tx.document.create({
+          data: {
+            condominiumId: condoId,
+            unitId: unitId || null,
+            title,
+            category,
+            requiredRole: (requiredRole as PlatformRole) || PlatformRole.resident,
+            filePath,
+            versions: { create: { versionNumber: 1, filePath, uploadedBy: req.user.email } },
+          },
+          include: { versions: true },
+        });
       });
 
       res.status(201).json(document);
     } catch (error) {
+      if (error instanceof Error && error.message === 'INVALID_DOCUMENT_UNIT') {
+        return res.status(400).json({ error: 'Unidade inválida para este condomínio.' });
+      }
       console.error("Create Document Error:", error);
       res.status(500).json({ error: "Erro ao registrar documento." });
     }

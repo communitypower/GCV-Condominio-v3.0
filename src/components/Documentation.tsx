@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FolderOpen, FileText, Search, Download, Eye } from 'lucide-react';
+import { Folder, FolderOpen, FileText, Search, Download, Eye } from 'lucide-react';
 
 interface DocumentationProps {
   condoId: string;
@@ -7,7 +7,7 @@ interface DocumentationProps {
 
 export default function Documentation({ condoId }: DocumentationProps) {
   const [search, setSearch] = useState('');
-  const [activeFolder, setActiveFolder] = useState<'all' | 'legal' | 'tech' | 'minutes'>('all');
+  const [activeFolder, setActiveFolder] = useState('all');
   const [list, setList] = useState<any[]>([]);
 
   useEffect(() => {
@@ -35,6 +35,18 @@ export default function Documentation({ condoId }: DocumentationProps) {
     window.open(`/api/v1/condominiums/${condoId}/documents/${docId}/download`, '_blank');
   };
 
+  const folders = [
+    { value: 'all', label: 'Todos os documentos' },
+    { value: 'legal', label: 'Jurídico e normativo' },
+    { value: 'minutes', label: 'Atas e deliberações' },
+    { value: 'technical', label: 'Técnicos e engenharia' },
+    { value: 'tech', label: 'Técnicos (legado)' },
+    { value: 'maintenance', label: 'Manutenção e certificados' },
+    { value: 'administrative', label: 'Administrativos' },
+    { value: 'financial', label: 'Financeiros' },
+    { value: 'resident', label: 'Unidades e moradores' },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -49,30 +61,13 @@ export default function Documentation({ condoId }: DocumentationProps) {
         {/* Navigation Sidebar inside Document tab */}
         <div className="bg-[#14161b] rounded-xl p-5 border border-zinc-800 space-y-3 h-fit">
           <span className="text-xs uppercase font-bold tracking-wider text-zinc-500 block mb-2">Pastas de Arquivos</span>
-          <button 
-            onClick={() => setActiveFolder('all')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold block transition-colors ${activeFolder === 'all' ? 'bg-[#10b981] text-white' : 'text-zinc-350 hover:bg-zinc-800'}`}
-          >
-            📂 Todos os Documentos ({list.length})
-          </button>
-          <button 
-            onClick={() => setActiveFolder('legal')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold block transition-colors ${activeFolder === 'legal' ? 'bg-[#10b981] text-white' : 'text-zinc-350 hover:bg-zinc-800'}`}
-          >
-            📜 Regimentos & Leis ({list.filter(d => d.category === 'legal').length})
-          </button>
-          <button 
-            onClick={() => setActiveFolder('tech')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold block transition-colors ${activeFolder === 'tech' ? 'bg-[#10b981] text-white' : 'text-zinc-350 hover:bg-zinc-800'}`}
-          >
-            📐 Plantas e Manuais Técnicos ({list.filter(d => d.category === 'tech').length})
-          </button>
-          <button 
-            onClick={() => setActiveFolder('minutes')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold block transition-colors ${activeFolder === 'minutes' ? 'bg-[#10b981] text-white' : 'text-zinc-350 hover:bg-zinc-800'}`}
-          >
-            📋 Atas de Reunião ({list.filter(d => d.category === 'minutes').length})
-          </button>
+          {folders.map((folder) => (
+            <button key={folder.value} onClick={() => setActiveFolder(folder.value)} className={`w-full text-left px-3 py-2.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-2 ${activeFolder === folder.value ? 'bg-[#10b981] text-white' : 'text-zinc-400 hover:bg-zinc-800'}`}>
+              <Folder className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate flex-1">{folder.label}</span>
+              <span>{folder.value === 'all' ? list.length : list.filter(d => d.category === folder.value).length}</span>
+            </button>
+          ))}
         </div>
 
         {/* Document search and list body */}

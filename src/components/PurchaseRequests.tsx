@@ -4,13 +4,17 @@ import { PurchaseRequest } from '../types';
 
 interface PurchaseRequestsProps {
   purchases: PurchaseRequest[];
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
-  onAddRequest: (newReq: PurchaseRequest) => void;
+  loading: boolean;
+  error: string | null;
+  onApprove: (id: string) => Promise<void>;
+  onReject: (id: string) => Promise<void>;
+  onAddRequest: (newReq: Omit<PurchaseRequest, 'id' | 'status' | 'requester' | 'createdAt'>) => Promise<void>;
 }
 
 export default function PurchaseRequests({
   purchases,
+  loading,
+  error,
   onApprove,
   onReject,
   onAddRequest
@@ -20,33 +24,43 @@ export default function PurchaseRequests({
   const [supplier, setSupplier] = useState('');
   const [items, setItems] = useState('');
   const [amount, setAmount] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !supplier.trim() || !items.trim() || !amount) {
       alert('Favor preencher o formulário para cotação.');
       return;
     }
-    const newReq: PurchaseRequest = {
-      id: `PR-${String(purchases.length + 1).padStart(2, '0')}`,
-      title,
-      supplier,
-      items,
-      amount: parseFloat(amount),
-      status: 'pending',
-      requester: 'Cassiano Marins',
-      createdAt: new Date().toISOString()
-    };
-    onAddRequest(newReq);
-    setShowAdd(false);
-    setTitle('');
-    setSupplier('');
-    setItems('');
-    setAmount('');
+    setSubmitting(true);
+    try {
+      await onAddRequest({ title, supplier, items, amount: parseFloat(amount) });
+      setShowAdd(false);
+      setTitle('');
+      setSupplier('');
+      setItems('');
+      setAmount('');
+    } catch {
+      // The parent exposes the API error in the page state.
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateStatus = async (id: string, action: 'approve' | 'reject') => {
+    setPendingAction(`${action}:${id}`);
+    try {
+      await (action === 'approve' ? onApprove(id) : onReject(id));
+    } catch {
+      // The parent exposes the API error in the page state.
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   return (
@@ -68,7 +82,11 @@ export default function PurchaseRequests({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+      {loading && <div className="rounded-lg border border-zinc-800 bg-[#14161b] p-6 text-center text-sm text-zinc-400">Carregando requisições...</div>}
+      {!loading && !error && purchases.length === 0 && <div className="rounded-lg border border-zinc-800 bg-[#14161b] p-6 text-center text-sm text-zinc-400">Nenhuma requisição cadastrada.</div>}
+
+      {!loading && <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {purchases.map(p => (
           <div key={p.id} className="bg-[#14161b] rounded-xl border border-zinc-800 p-5 flex flex-col justify-between space-y-4 shadow-md">
             <div className="space-y-2">
@@ -79,7 +97,7 @@ export default function PurchaseRequests({
                   p.status === 'rejected' ? 'bg-red-500/15 text-red-400 border border-red-500/10' :
                   'bg-amber-500/15 text-amber-500 border border-amber-500/10'
                 }`}>
-                  {p.status === 'approved' ? '✔ Aprovado' : p.status === 'rejected' ? '✘ Recusado' : '⚡ Aguardando'}
+                  {p.status === 'approved' ? 'Aprovado' : p.status === 'rejected' ? 'Recusado' : p.status === 'cancelled' ? 'Cancelado' : 'Aguardando'}
                 </span>
               </div>
               <h3 className="font-bold text-base text-white">{p.title}</h3>
@@ -99,14 +117,16 @@ export default function PurchaseRequests({
               {p.status === 'pending' ? (
                 <div className="flex gap-1.5">
                   <button
-                    onClick={() => onApprove(p.id)}
+                    onClick={() => updateStatus(p.id, 'approve')}
+                    disabled={pendingAction !== null}
                     className="p-1 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-all flex items-center gap-1"
                   >
                     <CheckCircle className="w-3.5 h-3.5" />
                     Aprovar
                   </button>
                   <button
-                    onClick={() => onReject(p.id)}
+                    onClick={() => updateStatus(p.id, 'reject')}
+                    disabled={pendingAction !== null}
                     className="p-1 px-3 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold transition-all flex items-center gap-1"
                   >
                     <XCircle className="w-3.5 h-3.5" />
@@ -121,7 +141,7 @@ export default function PurchaseRequests({
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       {showAdd && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
@@ -182,9 +202,10 @@ export default function PurchaseRequests({
 
               <button 
                 type="submit"
+                disabled={submitting}
                 className="w-full py-2.5 bg-[#10b981] text-white font-bold uppercase rounded hover:bg-emerald-600 transition-colors"
               >
-                Lançar Pré-aprovação
+                {submitting ? 'Salvando...' : 'Lançar Pré-aprovação'}
               </button>
             </form>
           </div>

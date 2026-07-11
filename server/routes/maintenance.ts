@@ -33,13 +33,34 @@ const commentSchema = z.object({
   comment: z.string().trim().min(1).max(2000),
 });
 
+const staffRoles = [
+  PlatformRole.admin,
+  PlatformRole.syndic,
+  PlatformRole.manager,
+  PlatformRole.council_member,
+  PlatformRole.accountant,
+];
+
+function hasScopedStaffRole(req: any) {
+  return req.authorizationContext.memberships.some((membership: any) => staffRoles.includes(membership.role));
+}
+
+async function residentUnitIds(userId: string, condominiumId: string) {
+  const relationships = await prisma.unitRelationship.findMany({
+    where: {
+      person: { user: { id: userId } },
+      unit: { building: { condominiumId } },
+    },
+    select: { unitId: true },
+  });
+  return relationships.map((relationship) => relationship.unitId);
+}
+
 // GET /api/v1/condominiums/:condoId/tickets
 router.get('/:condoId/tickets', requireAuth, tenantGuard, async (req: any, res) => {
   const { condoId } = req.params;
   try {
-    const isStaff = req.user.memberships.some((m: any) =>
-      [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.council_member, PlatformRole.accountant].includes(m.role)
-    );
+    const isStaff = hasScopedStaffRole(req);
 
     if (isStaff) {
       // Staff see all tickets in the condominium
@@ -53,14 +74,7 @@ router.get('/:condoId/tickets', requireAuth, tenantGuard, async (req: any, res) 
 
     // Residents see only common area tickets or their own unit tickets
     // Resolve resident unit IDs
-    const userRelationships = await prisma.unitRelationship.findMany({
-      where: {
-        person: { email: req.user.email },
-        unit: { building: { condominiumId: condoId } },
-      },
-      select: { unitId: true },
-    });
-    const unitIds = userRelationships.map((r) => r.unitId);
+    const unitIds = await residentUnitIds(req.user.id, condoId);
 
     const tickets = await prisma.maintenanceTicket.findMany({
       where: {
@@ -97,12 +111,10 @@ router.post('/:condoId/tickets', requireAuth, tenantGuard, validateBody(createTi
       }
 
       // Verify resident belongs to the unit if not staff/syndic
-      const isStaff = req.user.memberships.some((m: any) =>
-        [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager].includes(m.role)
-      );
+      const isStaff = hasScopedStaffRole(req);
       if (!isStaff) {
         const belongsToUnit = await prisma.unitRelationship.findFirst({
-          where: { unitId, person: { email: req.user.email } },
+          where: { unitId, person: { user: { id: req.user.id } } },
         });
         if (!belongsToUnit) {
           return res.status(403).json({ error: "Você não possui permissão para registrar chamado nesta unidade." });
@@ -203,6 +215,13 @@ router.post('/:condoId/tickets/:ticketId/comments', requireAuth, tenantGuard, va
 
     if (!ticket) {
       return res.status(404).json({ error: "Chamado não encontrado." });
+    }
+
+    if (!hasScopedStaffRole(req)) {
+      const unitIds = await residentUnitIds(req.user.id, req.params.condoId);
+      if (ticket.unitId !== null && !unitIds.includes(ticket.unitId)) {
+        return res.status(403).json({ error: "Você não possui permissão para comentar neste chamado." });
+      }
     }
 
     const ticketComment = await prisma.ticketComment.create({

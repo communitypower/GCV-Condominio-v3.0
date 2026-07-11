@@ -100,7 +100,7 @@ export interface PurchaseRequest {
   supplier: string;
   items: string;
   amount: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   requester: string;
   createdAt: string;
 }
@@ -111,7 +111,17 @@ export interface PaymentOrder {
   recipient: string;
   amount: number;
   dueDate: string;
-  status: 'pending' | 'paid' | 'overdue';
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  paidAt?: string;
+  createdAt?: string;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  type: 'urgent' | 'announcement' | 'system';
+  createdAt: string;
 }
 
 export interface CondominiumSummary {
@@ -132,5 +142,3 @@ export interface Edificio {
   avatar: string;
   createdAt: string;
 }
-
-

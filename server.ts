@@ -19,6 +19,10 @@ import equipmentRouter from "./server/routes/equipment";
 import documentsRouter from "./server/routes/documents";
 import auditRouter from "./server/routes/audit";
 import testingRouter from "./server/routes/testing";
+import importsRouter from "./server/routes/imports";
+import procurementRouter from "./server/routes/procurement";
+import paymentsRouter from "./server/routes/payments";
+import announcementsRouter from "./server/routes/announcements";
 import { requireAuth } from "./server/middleware/auth";
 import { createCsrfProtection } from "./server/middleware/csrf";
 
@@ -140,6 +144,10 @@ app.use("/api/v1/condominiums", maintenanceRouter);
 app.use("/api/v1/condominiums", billingRouter);
 app.use("/api/v1/condominiums", equipmentRouter);
 app.use("/api/v1/condominiums", documentsRouter);
+app.use("/api/v1/condominiums", importsRouter);
+app.use("/api/v1/condominiums", procurementRouter);
+app.use("/api/v1/condominiums", paymentsRouter);
+app.use("/api/v1/condominiums", announcementsRouter);
 app.use("/api/v1/accounts", auditRouter);
 app.use("/api/v1/testing", testingRouter);
 

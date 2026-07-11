@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { PrismaClient, PlatformRole } from '@prisma/client';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
 import { z } from 'zod';
 
@@ -16,20 +16,19 @@ const createCondominiumSchema = z.object({
 // GET /api/v1/condominiums
 router.get('/', requireAuth, async (req: any, res) => {
   try {
-    const isAdmin = req.user.memberships.some((m: any) => m.role === PlatformRole.admin);
-
-    if (isAdmin) {
-      const condominiums = await prisma.condominium.findMany();
-      return res.json(condominiums);
-    }
-
     const condoIds = req.user.memberships
       .map((m: any) => m.condominiumId)
       .filter(Boolean) as string[];
+    const accountIds = req.user.memberships
+      .filter((m: any) => m.condominiumId === null)
+      .map((m: any) => m.accountId) as string[];
 
     const condominiums = await prisma.condominium.findMany({
       where: {
-        id: { in: condoIds },
+        OR: [
+          { id: { in: condoIds } },
+          { accountId: { in: accountIds } },
+        ],
       },
     });
 
@@ -41,12 +40,17 @@ router.get('/', requireAuth, async (req: any, res) => {
 });
 
 // POST /api/v1/condominiums
-router.post('/', requireAuth, requireRole([PlatformRole.admin, PlatformRole.syndic]), validateBody(createCondominiumSchema), async (req: any, res) => {
+router.post('/', requireAuth, validateBody(createCondominiumSchema), async (req: any, res) => {
   const { name, address, accountId } = req.body;
 
-  const isAccountMember = req.user.memberships.some((m: any) => m.accountId === accountId);
-  if (!isAccountMember) {
-    return res.status(403).json({ error: "Acesso negado: você não pertence a esta conta." });
+  const canCreateInAccount = req.user.memberships.some(
+    (membership: any) =>
+      membership.accountId === accountId &&
+      membership.condominiumId === null &&
+      [PlatformRole.admin, PlatformRole.syndic].includes(membership.role)
+  );
+  if (!canCreateInAccount) {
+    return res.status(403).json({ error: "Acesso negado: papel insuficiente nesta conta." });
   }
 
   try {

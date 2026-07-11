@@ -1,5 +1,14 @@
 import assert from 'assert';
-import { PrismaClient, UnitStatus, UnitType } from '@prisma/client';
+import {
+  MaintenanceCategory,
+  MaintenancePriority,
+  MaintenanceStatus,
+  PlatformRole,
+  PrismaClient,
+  RelationshipRole,
+  UnitStatus,
+  UnitType,
+} from '@prisma/client';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000/api/v1';
 const prisma = new PrismaClient();
@@ -8,6 +17,14 @@ async function runTests() {
   console.log("Running Auth & Tenant Isolation tests...");
   let foreignAccountId: string | null = null;
   let foreignCondoId: string | null = null;
+  let foreignAdminUserId: string | null = null;
+  let foreignAdminPersonId: string | null = null;
+  let testResidentUserId: string | null = null;
+  let testResidentPersonId: string | null = null;
+  let testResidentUnitId: string | null = null;
+  let testResidentBuildingId: string | null = null;
+  let testResidentEmail: string | null = null;
+  let restrictedTicketId: string | null = null;
 
   try {
     const foreignAccount = await prisma.account.create({
@@ -71,6 +88,46 @@ async function runTests() {
     assert.ok(!condos.some((condo) => condo.id === foreignCondoId), "Condominium list must not include another tenant");
     console.log(`✔ Scoped access allowed. Found condominium: ${condos[0].name} (${condoId})`);
 
+    const foreignAdminEmail = `foreign-admin-${Date.now()}@example.com`;
+    const foreignAdminPerson = await prisma.person.create({
+      data: { name: 'Foreign Admin', email: foreignAdminEmail, phone: '000000000' },
+    });
+    foreignAdminPersonId = foreignAdminPerson.id;
+    const foreignAdmin = await prisma.user.create({
+      data: {
+        email: foreignAdminEmail,
+        personId: foreignAdminPerson.id,
+        memberships: {
+          create: {
+            accountId: foreignAccount.id,
+            condominiumId: null,
+            role: PlatformRole.admin,
+          },
+        },
+      },
+    });
+    foreignAdminUserId = foreignAdmin.id;
+    const foreignAdminLogin = await fetch(`${BASE_URL}/auth/mock-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: foreignAdminEmail }),
+    });
+    assert.strictEqual(foreignAdminLogin.status, 200, 'Foreign admin mock login should succeed');
+    const foreignAdminCookie = foreignAdminLogin.headers.get('set-cookie')!;
+
+    const foreignAdminCondosRes = await fetch(`${BASE_URL}/condominiums`, {
+      headers: { Cookie: foreignAdminCookie },
+    });
+    const foreignAdminCondos = (await foreignAdminCondosRes.json()) as any[];
+    assert.ok(foreignAdminCondos.some((condo) => condo.id === foreignCondoId));
+    assert.ok(!foreignAdminCondos.some((condo) => condo.id === condoId), 'Admin list must remain account-scoped');
+
+    const foreignAdminCrossTenantRes = await fetch(`${BASE_URL}/condominiums/${condoId}/residents`, {
+      headers: { Cookie: foreignAdminCookie },
+    });
+    assert.strictEqual(foreignAdminCrossTenantRes.status, 403, 'Admin role from another account must not bypass tenant scope');
+    console.log('✔ Admin privileges remain scoped to their own account');
+
     // 4. Test tenantGuard - access a dummy condominium ID (not in memberships)
     const dummyCondoId = '00000000-0000-0000-0000-000000000000';
     console.log(`Testing tenantGuard: accessing dummy condo ${dummyCondoId} as syndic...`);
@@ -102,6 +159,98 @@ async function runTests() {
       body: JSON.stringify({ email: 'carlos.ramos@email.com' }),
     });
     const resCookie = resLoginRes.headers.get('set-cookie')!;
+
+    const ownRelationships = await prisma.unitRelationship.findMany({
+      where: {
+        person: { user: { email: 'carlos.ramos@email.com' } },
+        unit: { building: { condominiumId: condoId } },
+      },
+      select: { unitId: true, personId: true },
+    });
+    assert.ok(ownRelationships.length > 0, 'Seed resident should have at least one unit relationship');
+
+    const residentsRes = await fetch(`${BASE_URL}/condominiums/${condoId}/residents`, {
+      headers: { Cookie: resCookie },
+    });
+    assert.strictEqual(residentsRes.status, 200);
+    const visibleRelationships = (await residentsRes.json()) as any[];
+    assert.ok(visibleRelationships.length > 0);
+    assert.ok(
+      visibleRelationships.every((relationship) => relationship.person.email === 'carlos.ramos@email.com'),
+      'Resident must only receive their own PII and relationships'
+    );
+
+    const otherUnit = await prisma.unit.findFirst({
+      where: {
+        building: { condominiumId: condoId },
+        id: { notIn: ownRelationships.map((relationship) => relationship.unitId) },
+      },
+    });
+    assert.ok(otherUnit, 'Seed should contain another unit for ticket visibility test');
+    const restrictedTicket = await prisma.maintenanceTicket.create({
+      data: {
+        condominiumId: condoId,
+        unitId: otherUnit!.id,
+        title: `Restricted ticket ${Date.now()}`,
+        description: 'Must not be visible or commentable by another resident.',
+        category: MaintenanceCategory.other,
+        priority: MaintenancePriority.low,
+        status: MaintenanceStatus.reported,
+      },
+    });
+    restrictedTicketId = restrictedTicket.id;
+    const restrictedCommentRes = await fetch(
+      `${BASE_URL}/condominiums/${condoId}/tickets/${restrictedTicket.id}/comments`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: resCookie },
+        body: JSON.stringify({ comment: 'Cross-unit comment must fail.' }),
+      }
+    );
+    assert.strictEqual(restrictedCommentRes.status, 403, 'Resident must not comment on another unit ticket');
+    console.log('✔ Resident PII and ticket comments follow unit visibility');
+
+    const testBuilding = await prisma.building.create({
+      data: { name: `Resident Idempotency ${Date.now()}`, condominiumId: condoId },
+    });
+    testResidentBuildingId = testBuilding.id;
+    const testUnit = await prisma.unit.create({
+      data: {
+        number: `RES-${Date.now()}`,
+        type: UnitType.apartment,
+        status: UnitStatus.occupied,
+        fractionalShare: 0.001,
+        buildingId: testBuilding.id,
+      },
+    });
+    testResidentUnitId = testUnit.id;
+    testResidentEmail = `resident-idempotency-${Date.now()}@example.com`;
+    const residentPayload = {
+      name: 'Resident Idempotency',
+      email: testResidentEmail,
+      phone: '11999999999',
+      unitId: testUnit.id,
+      role: RelationshipRole.tenant,
+    };
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const createResidentRes = await fetch(`${BASE_URL}/condominiums/${condoId}/residents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify(residentPayload),
+      });
+      assert.strictEqual(createResidentRes.status, 201, 'Repeated resident creation should be idempotent');
+    }
+    const testResident = await prisma.user.findUnique({
+      where: { email: testResidentEmail },
+      include: { person: { include: { relationships: true } }, memberships: true },
+    });
+    assert.ok(testResident?.person);
+    testResidentUserId = testResident!.id;
+    testResidentPersonId = testResident!.person!.id;
+    assert.strictEqual(testResident!.passwordHash, null, 'Invited resident must not receive a shared password');
+    assert.strictEqual(testResident!.person!.relationships.length, 1, 'Repeated creation must not duplicate relationship');
+    assert.strictEqual(testResident!.memberships.length, 1, 'Repeated creation must not duplicate membership');
+    console.log('✔ Resident provisioning is transactional, idempotent, and passwordless');
 
     // Test role restriction: Resident trying to create a building block
     console.log("Testing role restriction: resident trying to create a building block...");
@@ -190,6 +339,44 @@ async function runTests() {
 
     console.log("All tests passed successfully!");
   } finally {
+    if (testResidentEmail && (!testResidentUserId || !testResidentPersonId)) {
+      const partialUser = await prisma.user.findFirst({
+        where: { email: { equals: testResidentEmail, mode: 'insensitive' } },
+      });
+      const partialPerson = await prisma.person.findFirst({
+        where: { email: { equals: testResidentEmail, mode: 'insensitive' } },
+      });
+      testResidentUserId = testResidentUserId ?? partialUser?.id ?? null;
+      testResidentPersonId = testResidentPersonId ?? partialPerson?.id ?? null;
+    }
+    if (restrictedTicketId) {
+      await prisma.maintenanceTicket.deleteMany({ where: { id: restrictedTicketId } });
+    }
+    if (testResidentPersonId) {
+      await prisma.unitRelationship.deleteMany({ where: { personId: testResidentPersonId } });
+    }
+    if (testResidentUserId) {
+      await prisma.membership.deleteMany({ where: { userId: testResidentUserId } });
+      await prisma.user.deleteMany({ where: { id: testResidentUserId } });
+    }
+    if (testResidentPersonId) {
+      await prisma.person.deleteMany({ where: { id: testResidentPersonId } });
+    }
+    if (testResidentUnitId) {
+      await prisma.unit.deleteMany({ where: { id: testResidentUnitId } });
+    }
+    if (testResidentBuildingId) {
+      await prisma.building.deleteMany({ where: { id: testResidentBuildingId } });
+    }
+    if (foreignAdminUserId) {
+      await prisma.auditEvent.deleteMany({ where: { userId: foreignAdminUserId } });
+      await prisma.membership.deleteMany({ where: { userId: foreignAdminUserId } });
+      await prisma.user.deleteMany({ where: { id: foreignAdminUserId } });
+    }
+    if (foreignAdminPersonId) {
+      await prisma.person.deleteMany({ where: { id: foreignAdminPersonId } });
+    }
+
     await prisma.auditEvent.deleteMany({
       where: { details: 'Login mock realizado em ambiente local/teste.' },
     });
