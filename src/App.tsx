@@ -147,7 +147,7 @@ export default function App() {
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
   
   // App simulated parameters
-  const [currentMonth, setCurrentMonth] = useState('2026-05'); // Current active month simulation
+  const [currentMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'info'} | null>(null);
 
   // Load user session on mount
@@ -219,6 +219,17 @@ export default function App() {
   useEffect(() => {
     if (!user || !activeEdificioId) return;
     localStorage.setItem('gcv_active_edificio_id', activeEdificioId);
+    const controller = new AbortController();
+    const request = (url: string) => fetch(url, { signal: controller.signal });
+
+    setUnits([]);
+    setBillings([]);
+    setMaintenanceRequests([]);
+    setEquipments([]);
+    setPlans([]);
+    setLogs([]);
+    setPurchases([]);
+    setPayments([]);
 
     const loadData = async () => {
       setPurchasesLoading(true);
@@ -227,7 +238,7 @@ export default function App() {
       setPaymentsError(null);
       try {
         // 1. Units load
-        const unitsRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/units`);
+        const unitsRes = await request(`/api/v1/condominiums/${activeEdificioId}/units`);
         if (unitsRes.ok) {
           const loadedUnits = await unitsRes.json();
           const mappedUnits = loadedUnits.map((u: any) => {
@@ -248,12 +259,12 @@ export default function App() {
         }
 
         // 2. Billings load
-        const chargesRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/charges`);
+        const chargesRes = await request(`/api/v1/condominiums/${activeEdificioId}/charges`);
         if (chargesRes.ok) {
           const loadedCharges = await chargesRes.json();
           const mappedBillings = loadedCharges.map((c: any) => ({
             id: c.id,
-            unitId: c.unit?.number || 'Unidade',
+            unitId: c.unitId,
             monthString: new Date(c.dueDate).toISOString().substring(0, 7),
             amount: c.amount,
             dueDate: new Date(c.dueDate).toISOString().split('T')[0],
@@ -268,7 +279,7 @@ export default function App() {
         }
 
         // 3. Maintenance Requests load
-        const ticketsRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/tickets`);
+        const ticketsRes = await request(`/api/v1/condominiums/${activeEdificioId}/tickets`);
         if (ticketsRes.ok) {
           const loadedTickets = await ticketsRes.json();
           const mappedTickets = loadedTickets.map((t: any) => ({
@@ -295,14 +306,14 @@ export default function App() {
         }
 
         // 4. Equipments load
-        const eqRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/equipment`);
+        const eqRes = await request(`/api/v1/condominiums/${activeEdificioId}/equipment`);
         if (eqRes.ok) {
           const loadedEq = await eqRes.json();
           setEquipments(loadedEq);
         }
 
         // 5. Plans load
-        const plansRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/plans`);
+        const plansRes = await request(`/api/v1/condominiums/${activeEdificioId}/plans`);
         if (plansRes.ok) {
           const loadedPlans = await plansRes.json();
           setPlans(loadedPlans);
@@ -311,7 +322,7 @@ export default function App() {
         // 6. Logs load
         const accountId = user.accountId || user.memberships?.[0]?.accountId;
         if (accountId) {
-          const auditRes = await fetch(`/api/v1/accounts/${accountId}/audit`);
+          const auditRes = await request(`/api/v1/accounts/${accountId}/audit?condominiumId=${activeEdificioId}`);
           if (auditRes.ok) {
             const loadedLogs = await auditRes.json();
             const mappedLogs = loadedLogs.map((l: any) => {
@@ -336,7 +347,7 @@ export default function App() {
           }
         }
 
-        const purchasesRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/purchase-requests`);
+        const purchasesRes = await request(`/api/v1/condominiums/${activeEdificioId}/purchase-requests`);
         if (!purchasesRes.ok) {
           const payload = await purchasesRes.json().catch(() => null);
           setPurchasesError(payload?.error || 'Erro ao carregar requisições de compra.');
@@ -345,7 +356,7 @@ export default function App() {
           setPurchases(await purchasesRes.json());
         }
 
-        const paymentsRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/payment-orders`);
+        const paymentsRes = await request(`/api/v1/condominiums/${activeEdificioId}/payment-orders`);
         if (!paymentsRes.ok) {
           const payload = await paymentsRes.json().catch(() => null);
           setPaymentsError(payload?.error || 'Erro ao carregar ordens de pagamento.');
@@ -354,6 +365,7 @@ export default function App() {
           setPayments(await paymentsRes.json());
         }
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.error("Error loading data from API:", error);
         setPurchasesError('Não foi possível carregar as requisições de compra.');
         setPaymentsError('Não foi possível carregar as ordens de pagamento.');
@@ -363,6 +375,7 @@ export default function App() {
       }
     };
     loadData();
+    return () => controller.abort();
   }, [activeEdificioId, user]);
 
   // Trigger brief alert notifications
@@ -526,7 +539,7 @@ export default function App() {
         const loadedCharges = await chargesRes.json();
         const mappedBillings = loadedCharges.map((c: any) => ({
           id: c.id,
-          unitId: c.unit?.number || 'Unidade',
+          unitId: c.unitId,
           monthString: new Date(c.dueDate).toISOString().substring(0, 7),
           amount: c.amount,
           dueDate: new Date(c.dueDate).toISOString().split('T')[0],
@@ -570,7 +583,7 @@ export default function App() {
         const loadedCharges = await chargesRes.json();
         const mappedBillings = loadedCharges.map((c: any) => ({
           id: c.id,
-          unitId: c.unit?.number || 'Unidade',
+          unitId: c.unitId,
           monthString: new Date(c.dueDate).toISOString().substring(0, 7),
           amount: c.amount,
           dueDate: new Date(c.dueDate).toISOString().split('T')[0],
@@ -610,7 +623,7 @@ export default function App() {
         const loadedCharges = await chargesRes.json();
         const mappedBillings = loadedCharges.map((c: any) => ({
           id: c.id,
-          unitId: c.unit?.number || 'Unidade',
+          unitId: c.unitId,
           monthString: new Date(c.dueDate).toISOString().substring(0, 7),
           amount: c.amount,
           dueDate: new Date(c.dueDate).toISOString().split('T')[0],
@@ -886,6 +899,7 @@ export default function App() {
           title: newLog.title,
           content: newLog.content,
           type: newLog.type,
+          condominiumId: activeEdificioId,
         }),
       });
 
@@ -893,7 +907,7 @@ export default function App() {
         throw new Error('Erro ao registrar entrada de log.');
       }
 
-      const auditRes = await fetch(`/api/v1/accounts/${accountId}/audit`);
+      const auditRes = await fetch(`/api/v1/accounts/${accountId}/audit?condominiumId=${activeEdificioId}`);
       if (auditRes.ok) {
         const loadedLogs = await auditRes.json();
         const mappedLogs = loadedLogs.map((l: any) => {
@@ -1889,7 +1903,7 @@ export default function App() {
           )}
 
           {activeTab === 'ciclovida' && (
-            <LifecycleCosts />
+            <LifecycleCosts equipments={equipments} plans={plans} />
           )}
 
           {activeTab === 'compras' && (
@@ -1950,7 +1964,7 @@ export default function App() {
               logs={logs}
               purchases={purchases}
               payments={payments}
-              activeEdificioName={activeEdificio?.name || 'Bela Vista Premium'}
+              activeEdificioName={activeEdificio.name}
             />
           )}
 
@@ -1971,8 +1985,8 @@ export default function App() {
                 paymentsCount: payments.length,
                 maintenancePendingCount: maintenanceRequests.filter(r => r.status === 'pending').length,
                 equipmentsCount: equipments.length,
-                activeBuildingName: activeEdificio?.name || 'Bela Vista Premium',
-                activeBuildingAddress: activeEdificio?.address || 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
+                activeBuildingName: activeEdificio.name,
+                activeBuildingAddress: activeEdificio.address,
                 units,
                 equipments,
                 logs,

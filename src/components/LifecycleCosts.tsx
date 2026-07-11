@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { AreaChart, TrendingUp, ShieldAlert, DollarSign, Sliders, CheckCircle } from 'lucide-react';
+import { Equipment, MaintenancePlan } from '../types';
 
-export default function LifecycleCosts() {
+export default function LifecycleCosts({ equipments, plans }: { equipments: Equipment[]; plans: MaintenancePlan[] }) {
   const [strategy, setStrategy] = useState<'preventive' | 'reactive'>('preventive');
   const [inflationRate, setInflationRate] = useState<number>(4.5); // % inflation slider
 
@@ -12,22 +13,22 @@ export default function LifecycleCosts() {
 
   const calculateYearlyCost = (year: number) => {
     const multiplier = 1 + (inflationRate / 100) * (year - 1);
+    const assetBase = equipments.length * 1000;
+    const planBase = plans.filter(plan => plan.status === 'active').length * 1500;
     
     if (strategy === 'preventive') {
       // Steady annual maintenance around 18k base
-      const upkeep = 18000 * multiplier;
+      const upkeep = (assetBase + planBase) * multiplier;
       // Small sporadic replacement
-      const replacement = (year === 5 || year === 9) ? 14000 * multiplier : 2000 * multiplier;
+      const replacement = (year === 5 || year === 9) ? equipments.length * 2500 * multiplier : 0;
       return upkeep + replacement;
     } else {
       // Reactive strategy charges lower initially (8k) but backloaded disasters
-      const upkeep = 8000 * multiplier;
+      const upkeep = equipments.length * 700 * multiplier;
       let replacement = 0;
       if (year >= 4) {
         // High unexpected breakdown costs
-        replacement = (year * 12500) * multiplier;
-      } else {
-        replacement = 1500 * multiplier;
+        replacement = (year * equipments.length * 1800) * multiplier;
       }
       return upkeep + replacement;
     }
@@ -46,6 +47,10 @@ export default function LifecycleCosts() {
 
   // Find max value for SVG auto-scaling
   const maxCumulative = cumulativeCostsList[9];
+
+  if (equipments.length === 0 && plans.length === 0) {
+    return <div className="space-y-6"><div><h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2"><AreaChart className="w-8 h-8 text-[#10b981]" />Gestão de Custo de Ciclo de Vida (LCC)</h1><p className="text-zinc-400 text-sm mt-1">Projeções do condomínio ativo</p></div><div className="min-h-64 bg-[#14161b] border border-dashed border-zinc-700 rounded-xl flex flex-col items-center justify-center text-center p-8"><AreaChart className="w-10 h-10 text-zinc-600 mb-3" /><h2 className="text-white font-semibold">Sem base técnica para projeção</h2><p className="text-zinc-500 text-sm mt-1">Cadastre equipamentos e planos de manutenção para calcular o ciclo de vida.</p></div></div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -201,7 +206,7 @@ export default function LifecycleCosts() {
               <div>
                 <span className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider block">Rateio Extra Médio</span>
                 <span className={`text-lg font-bold ${strategy === 'preventive' ? 'text-[#10b981]' : 'text-red-400'}`}>
-                  {strategy === 'preventive' ? 'R$ 0,00' : 'R$ 345,00 /mês'}
+                  {strategy === 'preventive' ? 'R$ 0,00' : `${formatCurrency(maxCumulative / 120)} /mês`}
                 </span>
               </div>
               <span className={strategy === 'preventive' ? 'text-zinc-650' : 'text-red-400 animate-pulse'}>

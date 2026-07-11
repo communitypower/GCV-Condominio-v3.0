@@ -216,6 +216,7 @@ model Condominium {
   purchaseRequests PurchaseRequest[]
   paymentOrders    PaymentOrder[]
   announcements    Announcement[]
+  auditEvents      AuditEvent[]
 }
 
 model PurchaseRequest {
@@ -513,6 +514,8 @@ model AuditEvent {
   id        String      @id @default(uuid())
   accountId String
   account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  condominiumId String?
+  condominium   Condominium? @relation(fields: [condominiumId], references: [id], onDelete: SetNull)
   userId    String?
   userEmail String?
   action    AuditAction
@@ -521,4 +524,6 @@ model AuditEvent {
   details   String
   ipAddress String?
   createdAt DateTime    @default(now())
+
+  @@index([condominiumId, createdAt])
 }

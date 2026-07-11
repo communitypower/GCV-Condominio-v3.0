@@ -107,7 +107,7 @@ export default function BillingTracker({
     return matchesSearch && matchesStatus;
   });
 
-  const monthsAvailable = ['2026-03', '2026-04', '2026-05', '2026-06'];
+  const monthsAvailable = [...new Set([currentMonth, ...billings.map(billing => billing.monthString)])].sort().reverse();
 
   const formatMonthName = (yrMo: string) => {
     const [year, month] = yrMo.split('-');
@@ -327,7 +327,7 @@ export default function BillingTracker({
                     <tr key={bil.id} className="hover:bg-slate-900/30 transition-colors">
                       <td className="p-4">
                         <span className="font-mono font-bold text-[#D4AF37] bg-[#0F1115] border border-slate-800 px-2 py-0.5 rounded">
-                          {bil.unitId}
+                          {unit?.number || bil.unitId}
                         </span>
                       </td>
                       <td className="p-4">

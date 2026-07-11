@@ -23,6 +23,10 @@ export default function BimViewer({
     ? requests 
     : requests.filter(r => r.unitId.includes(selectedBlock === 'A' ? 'A-' : selectedBlock === 'B' ? 'B-' : 'C-'));
 
+  if (equipments.length === 0 && requests.length === 0) {
+    return <div className="space-y-6"><div><h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2"><Box className="w-8 h-8 text-[#10b981]" />Visualizador BIM Integrado</h1><p className="text-zinc-400 text-sm mt-1">Modelo técnico do condomínio ativo</p></div><div className="min-h-72 bg-[#14161b] border border-dashed border-zinc-700 rounded-xl flex flex-col items-center justify-center text-center p-8"><Box className="w-10 h-10 text-zinc-600 mb-3" /><h2 className="text-white font-semibold">Nenhum modelo ou ativo cadastrado</h2><p className="text-zinc-500 text-sm mt-1">O visualizador será habilitado após a carga dos dados técnicos e equipamentos.</p></div></div>;
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -141,24 +145,24 @@ export default function BimViewer({
                 {hoveredFloor === 3 && (
                   <div className="space-y-1">
                     <p className="font-bold text-white">Laje Técnica - Cobertura</p>
-                    <p className="text-zinc-400">Ativos: Caldeiras, Pressurizadores.</p>
-                    <p className="text-emerald-400 font-semibold">Inspeção regular em dia.</p>
+                    <p className="text-zinc-400">Ativos no escopo: {blockEquipments.length}.</p>
+                    <p className="text-emerald-400 font-semibold">Dados derivados do inventário ativo.</p>
                   </div>
                 )}
                 {hoveredFloor === 2 && (
                   <div className="space-y-1">
                     <p className="font-bold text-white">Pavimento Central - Apartamentos</p>
-                    <p className="text-zinc-400">Ativos: Elevadores, Distribuição.</p>
-                    <p className="text-[#fab01c] font-semibold">1 chamado aberto (MNT-003).</p>
+                    <p className="text-zinc-400">Equipamentos vinculados: {blockEquipments.length}.</p>
+                    <p className="text-[#fab01c] font-semibold">Chamados no escopo: {blockRequests.length}.</p>
                   </div>
                 )}
                 {hoveredFloor === 1 && (
                   <div className="space-y-1 text-xs">
                     <p className="font-bold text-red-400">Subsolo - Casa de Máquinas</p>
-                    <p className="text-zinc-300">Ativos cruciais: Gerador, Quadro Geral, Bombas d'Água.</p>
+                    <p className="text-zinc-300">Ativos críticos cadastrados: {blockEquipments.filter(eq => eq.status === 'critical').length}.</p>
                     <p className="text-red-500 font-extrabold flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5 animate-pulse" />
-                      ALERTA: Quadro Geral Crítico!
+                      {blockEquipments.some(eq => eq.status === 'critical') ? 'Existem ativos críticos.' : 'Nenhum ativo crítico.'}
                     </p>
                   </div>
                 )}
@@ -177,19 +181,19 @@ export default function BimViewer({
           <div className="p-4 bg-[#0d0e12] rounded-lg border border-zinc-850 space-y-2">
             <div className="flex justify-between text-xs">
               <span className="text-zinc-500">Área Construída</span>
-              <span className="font-bold text-white">4.850,22 m²</span>
+              <span className="font-bold text-zinc-400">Não cadastrado</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-zinc-500">Ano do Projeto Executivo</span>
-              <span className="font-bold text-white">2020 (LOD 400)</span>
+              <span className="font-bold text-zinc-400">Não cadastrado</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-zinc-500">Torres Ativas no Projeto</span>
-              <span className="font-bold text-white">02 (Bloco A e B)</span>
+              <span className="font-bold text-white">{new Set(blockEquipments.map(eq => eq.location)).size}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-zinc-500">Eficiência Energética</span>
-              <span className="font-bold text-[#10b981]">Classe A (Procel)</span>
+              <span className="font-bold text-zinc-400">Não cadastrada</span>
             </div>
           </div>
 

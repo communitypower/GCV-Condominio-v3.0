@@ -21,13 +21,12 @@ export default function Dashboard({
   onNavigate
 }: DashboardProps) {
 
-  // Dynamic calculations from real state (initialized to exact image metrics)
   const totalEquipmentsCount = equipments.length;
   const activeRequests = requests.filter(r => r.status === 'reported' || r.status === 'in_progress');
   const pendingOSCount = activeRequests.length;
   
-  // OS Atrasadas: count of urgent/high tickets that are pending and old (or MNT-017)
-  const delayedOSCount = requests.filter(r => r.id === 'MNT-017' && r.status !== 'resolved').length || 1; 
+  const overdueThreshold = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const delayedOSCount = activeRequests.filter(r => new Date(r.reportedAt).getTime() < overdueThreshold).length;
 
   // Counts for Equipment status
   const countOperational = equipments.filter(e => e.status === 'operational').length;
@@ -35,12 +34,6 @@ export default function Dashboard({
   const countAlert = equipments.filter(e => e.status === 'alert').length;
   const countMaintenance = equipments.filter(e => e.status === 'maintenance').length;
 
-  // Counts for OS Category/Type (Corretiva Emerg, Preventiva, Corretiva Plan, Preditiva)
-  // Let's filter real requests or map them proportionally
-  const countCorretivaEmerg = requests.filter(r => r.category === 'plumbing' && r.priority === 'urgent').length + 2; // ~2
-  const countPreventiva = requests.filter(r => r.priority === 'medium' || r.priority === 'low').length; // ~15
-  const countCorretivaPlan = requests.filter(r => r.category === 'electrical' && r.priority === 'medium').length || 2; // ~2
-  const countPreditiva = requests.filter(r => r.category === 'structural').length || 4; // ~4
   const equipmentStatusData = [
     { label: 'Operacional', value: countOperational, color: '#34d399' },
     { label: 'Em manutenção', value: countMaintenance, color: '#fbbf24' },
@@ -50,10 +43,10 @@ export default function Dashboard({
   const totalEquipmentStatus = equipmentStatusData.reduce((sum, item) => sum + item.value, 0);
   const statusMax = Math.max(...equipmentStatusData.map((item) => item.value), 1);
   const maintenanceTypeData = [
-    { label: 'Corretiva emerg.', shortLabel: 'Emerg.', value: countCorretivaEmerg, color: '#22d3ee' },
-    { label: 'Preventiva', shortLabel: 'Preventiva', value: countPreventiva, color: '#34d399' },
-    { label: 'Corretiva plan.', shortLabel: 'Planejada', value: countCorretivaPlan, color: '#fbbf24' },
-    { label: 'Preditiva', shortLabel: 'Preditiva', value: countPreditiva, color: '#f87171' },
+    { label: 'Hidráulica', shortLabel: 'Hidráulica', value: requests.filter(r => r.category === 'plumbing').length, color: '#22d3ee' },
+    { label: 'Elétrica', shortLabel: 'Elétrica', value: requests.filter(r => r.category === 'electrical').length, color: '#34d399' },
+    { label: 'Estrutural', shortLabel: 'Estrutural', value: requests.filter(r => r.category === 'structural').length, color: '#fbbf24' },
+    { label: 'Outras categorias', shortLabel: 'Outras', value: requests.filter(r => !['plumbing', 'electrical', 'structural'].includes(r.category)).length, color: '#f87171' },
   ];
   const maxMaintenanceType = Math.max(...maintenanceTypeData.map((item) => item.value), 1);
   const yAxisMax = Math.max(4, Math.ceil(maxMaintenanceType / 4) * 4);
@@ -172,7 +165,7 @@ export default function Dashboard({
             <div className="space-y-3">
               {equipmentStatusData.map((item) => {
                 const percent = totalEquipmentStatus ? Math.round((item.value / totalEquipmentStatus) * 100) : 0;
-                const barWidth = `${Math.max(4, (item.value / statusMax) * 100)}%`;
+                const barWidth = item.value ? `${Math.max(4, (item.value / statusMax) * 100)}%` : '0%';
 
                 return (
                   <div key={item.label} className="space-y-1.5">

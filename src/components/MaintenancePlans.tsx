@@ -19,7 +19,11 @@ export default function MaintenancePlans({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [frequency, setFrequency] = useState<MaintenancePlan['frequency']>('monthly');
-  const [nextOccurrence, setNextOccurrence] = useState('2026-06-15');
+  const [nextOccurrence, setNextOccurrence] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 30);
+    return date.toISOString().slice(0, 10);
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,6 +65,7 @@ export default function MaintenancePlans({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {plans.length === 0 && <div className="md:col-span-2 lg:col-span-3 p-8 text-center bg-[#14161b] border border-dashed border-zinc-700 rounded-xl text-sm text-zinc-500">Nenhum plano de manutenção cadastrado.</div>}
         {plans.map(p => (
           <div 
             key={p.id} 

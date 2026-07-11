@@ -147,7 +147,7 @@ export default function Residences({
   });
 
   // Extract unique blocks for filter dropdown
-  const uniqueBlocks = ['Bloco A', 'Bloco B', 'Casas'];
+  const uniqueBlocks = [...new Set(units.map(unit => unit.block))].sort();
 
   // Status mapping
   const statusLabels: Record<UnitStatus, string> = {
