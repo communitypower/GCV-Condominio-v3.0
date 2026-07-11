@@ -220,7 +220,7 @@ async function runTests() {
 
     // Verify Audit Log entry was generated
     console.log("Fetching audit logs to verify entry creation...");
-    const auditRes = await fetch(`${BASE_URL}/accounts/${accountId}/audit`, {
+    const auditRes = await fetch(`${BASE_URL}/accounts/${accountId}/audit?condominiumId=${condoId}`, {
       headers: { Cookie: syndicCookie }
     });
     assert.strictEqual(auditRes.status, 200, "Should allow fetching audit logs");

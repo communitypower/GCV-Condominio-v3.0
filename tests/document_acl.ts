@@ -1,8 +1,29 @@
 import assert from 'assert';
+import fs from 'node:fs';
+import path from 'node:path';
 import { PrismaClient, RelationshipRole, UnitStatus, UnitType } from '@prisma/client';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000/api/v1';
 const prisma = new PrismaClient();
+const documentStorageRoot = path.resolve(process.env.DOCUMENT_STORAGE_PATH || 'uploads');
+
+function latestDocumentPath(document: any) {
+  const versions = Array.isArray(document.versions) ? document.versions : [];
+  const latest = versions.sort((a: any, b: any) => b.versionNumber - a.versionNumber)[0];
+  return latest?.filePath || document.filePath;
+}
+
+function ensureTestDocumentFile(filePath: string, createdFiles: string[]) {
+  const relativePath = filePath.replace(/^uploads[\\/]/, '');
+  const absolutePath = path.resolve(documentStorageRoot, relativePath);
+  assert.ok(absolutePath.startsWith(`${documentStorageRoot}${path.sep}`), 'Document path must stay inside storage root');
+
+  if (!fs.existsSync(absolutePath)) {
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    fs.writeFileSync(absolutePath, '%PDF-1.4\n% GCV document ACL test fixture\n');
+    createdFiles.push(absolutePath);
+  }
+}
 
 async function runTests() {
   console.log("Running Document ACL Verification tests...");
@@ -10,6 +31,7 @@ async function runTests() {
   let tempRelationshipId: string | null = null;
   let tempUnitId: string | null = null;
   let tempBuildingId: string | null = null;
+  const createdFiles: string[] = [];
 
   try {
     // 1. Login as Syndic to find document IDs and condo ID
@@ -37,6 +59,7 @@ async function runTests() {
 
     const publicDoc = documents.find(d => d.unitId === null);
     assert.ok(publicDoc, "Should have a public document");
+    ensureTestDocumentFile(latestDocumentPath(publicDoc), createdFiles);
 
     const carlosPerson = await prisma.person.findUnique({
       where: { email: 'carlos.ramos@email.com' },
@@ -107,6 +130,7 @@ async function runTests() {
     const privateDoc = (await createPrivateRes.json()) as any;
     assert.ok(privateDoc.id, `Should have created private document successfully: ${JSON.stringify(privateDoc)}`);
     privateDocId = privateDoc.id;
+    ensureTestDocumentFile(latestDocumentPath(privateDoc), createdFiles);
 
     // 2. Login as Resident of unit A-101 (carlos.ramos@email.com)
     console.log("Logging in as Resident Carlos (A-101)...");
@@ -178,6 +202,11 @@ async function runTests() {
     }
     if (tempBuildingId) {
       await prisma.building.deleteMany({ where: { id: tempBuildingId } });
+    }
+    for (const file of createdFiles) {
+      if (fs.existsSync(file)) {
+        fs.unlinkSync(file);
+      }
     }
     await prisma.$disconnect();
   }

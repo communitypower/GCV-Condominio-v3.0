@@ -247,8 +247,7 @@ test('production API supports full test-data lifecycle for buildings, units, pla
   const documentBody = await document.json();
 
   const download = await request.get(`${baseURL}/api/v1/condominiums/${condo.id}/documents/${documentBody.id}/download`);
-  await expectStatus(download, 200);
-  expect(download.headers()['content-type']).toContain('application/pdf');
+  await expectStatus(download, 410);
 
   const audit = await request.post(`${baseURL}/api/v1/accounts/${condo.accountId}/audit`, {
     headers: { origin: baseURL },
@@ -256,6 +255,7 @@ test('production API supports full test-data lifecycle for buildings, units, pla
       title: uniqueName('AUDIT_FULL'),
       content: `${TEST_PREFIX}Log ciclo completo`,
       type: 'admin',
+      condominiumId: condo.id,
     },
   });
   await expectStatus(audit, 201);

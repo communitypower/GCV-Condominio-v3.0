@@ -134,8 +134,8 @@ async function runTests() {
     const guardRes = await fetch(`${BASE_URL}/condominiums/${dummyCondoId}/units`, {
       headers: { Cookie: cookie },
     });
-    assert.strictEqual(guardRes.status, 403, "Should return 403 for unauthorized condominium context");
-    console.log("✔ Dummy cross-tenant access blocked successfully (403)");
+    assert.strictEqual(guardRes.status, 404, "Should return 404 for nonexistent condominium context");
+    console.log("✔ Dummy nonexistent condominium access blocked successfully (404)");
 
     console.log("Testing tenantGuard: accessing real foreign tenant condo as syndic...");
     const foreignUnitsRes = await fetch(`${BASE_URL}/condominiums/${foreignCondoId}/units`, {

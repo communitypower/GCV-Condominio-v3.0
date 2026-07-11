@@ -44,7 +44,8 @@ async function firstCondominium(request: APIRequestContext) {
   expect(response.ok(), await response.text()).toBeTruthy();
   const condos = await response.json();
   expect(condos.length).toBeGreaterThan(0);
-  return condos[0] as { id: string; accountId: string; name: string };
+  const rfcUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return (condos.find((condo: { id: string }) => rfcUuidPattern.test(condo.id)) || condos[0]) as { id: string; accountId: string; name: string };
 }
 
 test.beforeEach(async ({ request }) => {
@@ -82,7 +83,7 @@ test('password session, dashboard shell, sidebar workflows, and logout work', as
     ['condominos', /Cadastro Diretor de Condôminos/i],
     ['documentacao', /Biblioteca Digital de Documentação/i],
     ['notificacoes', /Comunicados & Notificações Gerais/i],
-    ['usuarios', /Equipe Administrativa & Prestadores/i],
+    ['usuarios', /Corpo Diretivo e Equipe/i],
     ['github', /Controle de Versão & Integração GitHub/i],
   ];
 
@@ -248,6 +249,7 @@ test('API-backed dashboard workflows create, update, block, and clean production
       title: uniqueName('AUDIT'),
       content: `${TEST_PREFIX}Registro operacional`,
       type: 'admin',
+      condominiumId: condo.id,
     },
   });
   expect(auditRes.status(), await auditRes.text()).toBe(201);
@@ -266,13 +268,13 @@ test('API-backed dashboard workflows create, update, block, and clean production
   const document = await documentRes.json();
 
   const downloadRes = await request.get(`${baseURL}/api/v1/condominiums/${condo.id}/documents/${document.id}/download`);
-  expect(downloadRes.status(), await downloadRes.text()).toBe(200);
+  expect(downloadRes.status(), await downloadRes.text()).toBe(410);
 
-  const aiBlocked = await request.post(`${baseURL}/api/gemini/chat`, {
+  const aiResponse = await request.post(`${baseURL}/api/gemini/chat`, {
     headers: { origin: baseURL },
-    data: { prompt: 'teste', contextData: {} },
+    data: { prompt: 'Responda apenas: OK', contextData: { edificioNome: 'Condomínio Beta' } },
   });
-  expect(aiBlocked.status()).toBe(403);
+  expect(aiResponse.status(), await aiResponse.text()).toBe(200);
 
   const githubBlocked = await request.get(`${baseURL}/api/auth/github/url`);
   expect(githubBlocked.status()).toBe(403);

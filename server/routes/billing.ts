@@ -119,6 +119,7 @@ router.patch(
         await prisma.auditEvent.create({
           data: {
             accountId: condo.accountId,
+            condominiumId: req.params.condoId,
             userId: req.user.id,
             userEmail: req.user.email,
             action: 'update',

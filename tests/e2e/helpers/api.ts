@@ -6,6 +6,8 @@ export type CondominiumContext = {
   name: string;
 };
 
+const rfcUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function apiLogin(
   request: APIRequestContext,
   baseURL: string,
@@ -45,7 +47,7 @@ export async function firstCondominium(request: APIRequestContext, baseURL: stri
   expect(response.ok(), await response.text()).toBeTruthy();
   const condominiums = (await response.json()) as CondominiumContext[];
   expect(condominiums.length).toBeGreaterThan(0);
-  return condominiums[0];
+  return condominiums.find((condominium) => rfcUuidPattern.test(condominium.id)) || condominiums[0];
 }
 
 export async function expectStatus(response: { status(): number; text(): Promise<string> }, status: number | number[]) {

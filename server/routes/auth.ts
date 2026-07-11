@@ -2,9 +2,17 @@ import { Router } from 'express';
 import { AuditAction, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import * as openid from 'openid-client';
+import { webcrypto } from 'node:crypto';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+if (!globalThis.crypto) {
+  Object.defineProperty(globalThis, 'crypto', {
+    value: webcrypto,
+    configurable: true,
+  });
+}
 
 type AuthAuditUser = {
   id: string;

@@ -11,14 +11,14 @@ const createAuditLogSchema = z.object({
   title: z.string().trim().min(1).max(160),
   content: z.string().trim().min(1).max(5000),
   type: z.enum(['tech', 'security', 'admin']),
-  condominiumId: z.string().uuid(),
+  condominiumId: z.string().trim().min(1).max(120),
 });
 
 // GET /api/v1/accounts/:accountId/audit
 router.get('/:accountId/audit', requireAuth, tenantGuard, requireRole([PlatformRole.admin, PlatformRole.syndic]), async (req: any, res) => {
   const { accountId } = req.params;
   try {
-    const condominiumId = z.string().uuid().safeParse(req.query.condominiumId);
+    const condominiumId = z.string().trim().min(1).max(120).safeParse(req.query.condominiumId);
     if (!condominiumId.success) return res.status(400).json({ error: "Condomínio é obrigatório para consultar logs operacionais." });
     const hasAccess = req.user.memberships.some((membership: any) => membership.accountId === accountId && (membership.condominiumId === condominiumId.data || membership.condominiumId === null));
     if (!hasAccess) return res.status(403).json({ error: "Acesso negado ao condomínio informado." });
