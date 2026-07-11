@@ -8,14 +8,19 @@ const router = Router();
 const prisma = new PrismaClient();
 const publishRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager];
 const announcementTypeSchema = z.enum(AnnouncementType);
-const createSchema = z.object({
+const announcementFields = z.object({
   title: z.string().trim().min(1).max(160),
   body: z.string().trim().min(1).max(5000),
   type: announcementTypeSchema.default(AnnouncementType.announcement),
   publishedAt: z.coerce.date().optional(),
   expiresAt: z.coerce.date().optional(),
-}).refine((body) => !body.expiresAt || !body.publishedAt || body.expiresAt > body.publishedAt, { message: 'A expiração deve ser posterior à publicação.', path: ['expiresAt'] });
-const updateSchema = createSchema.partial().refine((body) => Object.keys(body).length > 0, { message: 'Informe ao menos um campo para atualização.' });
+});
+const validPublicationWindow = (body: { publishedAt?: Date; expiresAt?: Date }) =>
+  !body.expiresAt || !body.publishedAt || body.expiresAt > body.publishedAt;
+const createSchema = announcementFields.refine(validPublicationWindow, { message: 'A expiração deve ser posterior à publicação.', path: ['expiresAt'] });
+const updateSchema = announcementFields.partial()
+  .refine((body) => Object.keys(body).length > 0, { message: 'Informe ao menos um campo para atualização.' })
+  .refine(validPublicationWindow, { message: 'A expiração deve ser posterior à publicação.', path: ['expiresAt'] });
 
 router.get('/:condoId/announcements', requireAuth, tenantGuard, async (req, res) => {
   try {
