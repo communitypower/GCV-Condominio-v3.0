@@ -4,6 +4,7 @@ import { cleanupE2EData, TEST_PREFIX, uniqueName } from './helpers/cleanup';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 const isProductionTarget = baseURL.includes('gcv-app-production-production.up.railway.app');
+const expectAiEnabled = process.env.E2E_EXPECT_AI_ENABLED === 'true';
 
 async function passwordLogin(page: Page, email = 'sindico@gcv.com.br', password = 'sindico123') {
   await page.goto('/');
@@ -274,7 +275,7 @@ test('API-backed dashboard workflows create, update, block, and clean production
     headers: { origin: baseURL },
     data: { prompt: 'Responda apenas: OK', contextData: { edificioNome: 'Condomínio Beta' } },
   });
-  expect(aiResponse.status(), await aiResponse.text()).toBe(200);
+  expect(aiResponse.status(), await aiResponse.text()).toBe(expectAiEnabled ? 200 : 403);
 
   const githubBlocked = await request.get(`${baseURL}/api/auth/github/url`);
   expect(githubBlocked.status()).toBe(403);

@@ -33,7 +33,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "test:e2e:prod": "PLAYWRIGHT_BASE_URL=https://gcv-app-production-production.up.railway.app playwright test --project=chromium"
+    "test:e2e:prod": "PLAYWRIGHT_BASE_URL=https://gcv-app-production-production.up.railway.app E2E_EXPECT_AI_ENABLED=true playwright test --project=chromium"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

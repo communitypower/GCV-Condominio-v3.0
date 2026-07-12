@@ -1,90 +1,54 @@
 # Session Checkpoint
 
-Last updated: 2026-06-02
+Last updated: 2026-07-11
 
 ## Current State
 
-The repository is being prepared to move GCV Condominio from prototype to SaaS.
+GCV is deployed as a controlled Railway beta with React/Vite, Express, PostgreSQL, Prisma, server-side sessions, OAuth, tenant-scoped authorization, audit events, API smoke tests, Playwright E2E, and CI/security workflows.
 
-Current planning artifacts in `docs/`:
+Current source commit after Gate G0.1: `e4b426c`.
 
-- `GCV_SAAS_IMPLEMENTATION_MASTER_PLAN.md`
-- `CODEX_IMPLEMENTATION_PLAYBOOK.md`
-- `LEAN_COST_CLOUD_PLAN.md`
-- `SESSION_CHECKPOINT.md`
-- `IMPLEMENTATION_READINESS_ANSWERS_DRAFT.md`
-- `DEVOPS_PIPELINE_AND_OPERATIONS_PLAN.md`
-- `MULTI_AGENT_REVIEW_REPORT.md`
-- `adr/README.md`
-- `adr/ADR_TEMPLATE.md`
+Railway dev, staging, and production deployments are healthy. All three currently auto-deploy from `main` and use `NODE_ENV=production`; this must be replaced by immutable promotion for production and may later be complemented by an explicit `APP_ENV`.
 
-Repository status at checkpoint:
+## Sources of Truth
 
-- Branch: `main`
-- Remote tracking: `origin/main`
-- `docs/` is untracked.
-- `package-lock.json` is untracked.
+Current beta and operations:
 
-## Active Decisions
+- `docs/PRODUCT_CLOSURE_PLAN.md`
+- `docs/PRODUCT_CLOSURE_STATUS.md`
+- `docs/RAILWAY_OPERATIONS_RUNBOOK.md`
+- `docs/BETA_GO_NO_GO_CHECKLIST.md`
 
-- Product: operational condominium SaaS system of record.
-- Geography/language: Brazil and Portuguese initially.
-- MVP customer: professional syndic or small property manager.
-- MVP finance: billing tracker/dashboard only; no real boleto, PIX, CNAB, reconciliation, or accounting ledger.
-- Database: PostgreSQL.
-- ORM/migrations: Prisma.
-- API: REST under `/api/v1` with Zod validation and OpenAPI later.
-- Runtime: Node.js 24 LTS; Node 22 LTS acceptable only if deployment constraints require it.
-- Package manager: npm with committed `package-lock.json`.
-- Delivery model: Solo + Codex.
-- Cloud target: GCP, introduced progressively.
-- Cost posture: Lean but Safe; under USD 100/month before paid customers.
-- Implementation strategy: local-first with Docker Compose before cloud deployment.
+Full-product evolution:
 
-## Known Risks
-
-- Current app stores operational state in browser `localStorage`.
-- Current app does not have production SaaS auth, tenancy, RBAC, audit, or PostgreSQL persistence.
-- GitHub/Gist integration is prototype/demo only and must not be production-enabled.
-- AI endpoint exists but must not process real tenant data.
-- Current AI model must be configurable by environment before production hardening.
-- Real resident, financial, OAuth, and document data must not be used yet.
-
-## Current AI Implementation
-
-- Provider: Google Gemini through `@google/genai`.
-- Endpoint: `/api/gemini/chat`.
-- Secret: `GEMINI_API_KEY`.
-- Required next hardening: add `GEMINI_MODEL`, feature flag AI usage, and prevent real tenant data from being sent to the LLM.
-
-## Latest Implementation Control
-
-Primary execution document:
-
-- `docs/GCV_SAAS_IMPLEMENTATION_MASTER_PLAN.md`
-
-Supporting implementation guidance:
-
+- `docs/TARGET_PRODUCT_ARCHITECTURE.md`
+- `docs/CODEXGPT_FULL_PRODUCT_IMPLEMENTATION_PLAN.md`
 - `docs/CODEX_IMPLEMENTATION_PLAYBOOK.md`
-- `docs/LEAN_COST_CLOUD_PLAN.md`
-- `docs/DEVOPS_PIPELINE_AND_OPERATIONS_PLAN.md`
-- `docs/IMPLEMENTATION_READINESS_ANSWERS_DRAFT.md`
 
-## Next Recommended Codex Task
+Historical plans and reviews remain useful as decision history but do not describe the current implementation baseline.
 
-Start Gate 0: DevOps Foundation.
+## Active Product Boundaries
 
-First work package:
+- PostgreSQL is the structured system of record for implemented operational modules.
+- `localStorage` is limited to interface/session hints and must not own business records or provider credentials.
+- Current finance is operational tracking, not formal accounting, bank reconciliation, real boleto/Pix, or fiscal bookkeeping.
+- Current BIM and LCC views are prototypes; production implementations follow Gates 6 and 7 of the full-product plan.
+- AI is feature-flagged and must not process unrestricted real tenant data before policy, redaction, evaluation, and LGPD approval.
+- GitHub/Gist integration remains disabled for production data.
 
-```text
-Title: Add runtime pin and npm package policy
-Gate: DevOps Foundation
-Goal: Make Node/npm runtime expectations explicit.
-Context Files: package.json, package-lock.json
-Non-goals: No framework upgrades, no dependency refactor.
-Expected Changes: Add .nvmrc, package.json engines, packageManager.
-Acceptance Criteria: Runtime metadata is present and consistent with the master plan.
-Verification Commands: node --version, npm --version, npm run lint
-Risk/Rollback Notes: Revert runtime metadata if the deployment target cannot support it.
-```
+## Latest Validation
 
+- Local typecheck, build, harness tests, API smoke tests, and dependency audit passed.
+- GitHub CI, migration verification, API smoke, Gitleaks, and CodeQL passed on `e4b426c`.
+- Railway dev/staging/production healthchecks passed.
+- Production Playwright suite passed 6/6 and completed cleanup.
+
+## Next Codex Work
+
+Continue Gate 0 in `docs/CODEXGPT_FULL_PRODUCT_IMPLEMENTATION_PLAN.md`:
+
+1. G0.2: keep active documentation aligned with verified infrastructure.
+2. G0.3: add critical Playwright workflows to CI against an ephemeral app/database.
+3. G0.4: prepare restore evidence and request only the Railway dashboard actions that cannot be automated safely.
+
+Do not begin accounting, production BIM, LCC, or unrestricted AI before their dependency gates.
