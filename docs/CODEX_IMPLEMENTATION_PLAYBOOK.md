@@ -13,6 +13,13 @@ Current execution source of truth:
 - `docs/RAILWAY_OPERATIONS_RUNBOOK.md`
 - `docs/BETA_GO_NO_GO_CHECKLIST.md`
 
+For post-beta full-product evolution, the source of truth is:
+
+- `docs/TARGET_PRODUCT_ARCHITECTURE.md`
+- `docs/CODEXGPT_FULL_PRODUCT_IMPLEMENTATION_PLAN.md`
+
+The beta closure documents remain authoritative for the current Railway release and operational gates. The post-beta documents govern expansion into engineering, BIM, LCC, AI, document storage, and accounting.
+
 Older GCP/Cloud Run plans are historical references only unless a future decision explicitly reopens them.
 
 ## 1. Operating Rules
