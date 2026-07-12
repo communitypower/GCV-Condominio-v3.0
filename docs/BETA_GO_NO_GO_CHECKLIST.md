@@ -13,8 +13,8 @@ Status: required before `v0.1.0-beta.1` production beta.
 
 ## Staging
 
-- [ ] Railway `staging` environment exists.
-- [ ] Staging app and PostgreSQL services are isolated from production.
+- [x] Railway `staging` environment exists.
+- [x] Staging app and PostgreSQL services are isolated from production.
 - [ ] Staging variables match `docs/RAILWAY_OPERATIONS_RUNBOOK.md`.
 - [ ] `NODE_ENV=staging`.
 - [ ] `APP_URL` matches the staging HTTPS origin.
@@ -24,35 +24,35 @@ Status: required before `v0.1.0-beta.1` production beta.
 - [ ] `ENABLE_AI_ASSISTANT=false` unless testing with synthetic data.
 - [ ] `ENABLE_GITHUB_INTEGRATION=false` unless testing with synthetic data.
 - [ ] `ENABLE_DEMO_EXPORTS=false` unless explicitly testing demo behavior.
-- [ ] `/health`, `/livez`, and `/readyz` return success.
+- [x] `/health`, `/livez`, and `/readyz` return success.
 - [ ] Smoke tests pass against staging using disposable/synthetic data.
 - [ ] Tenant isolation is manually spot-checked with at least two tenants.
 
 ## Backup And Restore
 
 - [ ] Railway PostgreSQL backups are enabled for production.
-- [ ] Manual pre-migration backup process is tested.
-- [ ] Restore drill is completed into a recovery database.
+- [x] Manual pre-migration backup process is tested.
+- [x] Restore drill is completed into a recovery database.
 - [ ] Restored database passes `/readyz`.
-- [ ] Restored row counts are recorded for `User`, `Condominium`, `Membership`, and `AuditEvent`.
-- [ ] Restore operator, date, source backup, and validation result are recorded.
-- [ ] `docs/RESTORE_DRILL_LOG.md` includes the staging or production-beta restore evidence.
+- [x] Restored row counts are recorded for `User`, `Condominium`, `Membership`, and `AuditEvent`.
+- [x] Restore operator, date, source backup, and validation result are recorded.
+- [x] `docs/RESTORE_DRILL_LOG.md` includes the staging or production-beta restore evidence.
 
 ## Production Beta
 
-- [ ] Railway `production` environment exists.
-- [ ] Production database is isolated from dev/staging.
-- [ ] `NODE_ENV=production`.
-- [ ] `APP_URL` matches the production HTTPS origin.
+- [x] Railway `production` environment exists.
+- [x] Production database is isolated from dev/staging.
+- [x] `NODE_ENV=production`.
+- [x] `APP_URL` matches the production HTTPS origin.
 - [ ] `SESSION_SECRET` is unique and strong.
 - [ ] OAuth client secrets are production-specific.
 - [ ] Google OAuth callback works on the final production domain.
 - [ ] Microsoft OAuth callback works on the final production domain.
 - [ ] `BETA_ALLOWED_EMAILS` includes only approved beta users.
-- [ ] Mock login is unavailable.
+- [x] Mock login is unavailable.
 - [ ] AI, GitHub/Gist, and demo export flags are disabled for real-data tenants.
-- [ ] `/readyz` returns success after deployment.
-- [ ] One authenticated core workflow is manually checked.
+- [x] `/readyz` returns success after deployment.
+- [x] One authenticated core workflow is checked by the controlled production E2E suite.
 
 ## Decision
 

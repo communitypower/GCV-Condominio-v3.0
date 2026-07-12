@@ -47,8 +47,9 @@ Current Railway source integration auto-deploys `main` to all three app services
 - [ ] Add Playwright critical-path coverage to CI against an ephemeral application/database.
 - [ ] Decide whether production `ENABLE_E2E_TESTING` remains enabled; restrict and monitor it if retained.
 - [ ] Enable and verify Railway production backups.
-- [ ] Perform a Railway staging/recovery restore drill and update `docs/RESTORE_DRILL_LOG.md`.
-- [ ] Record RPO, RTO, restored row counts, operator, source backup, and date.
+- [x] Perform a Railway staging/recovery restore drill and update `docs/RESTORE_DRILL_LOG.md`.
+- [x] Record RPO, RTO, restored row counts, operator, source backup, and date.
+- [ ] Configure scheduled encrypted external logical backups because the current Railway plan does not expose native backups.
 - [ ] Complete manual Google OAuth verification for approved beta identities after the latest deployment.
 - [ ] Keep Microsoft OAuth out of release acceptance until real credentials and callbacks are configured.
 - [ ] Complete LGPD/privacy review before using AI with real tenant data.
