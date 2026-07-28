@@ -33,6 +33,39 @@ export default function Dashboard({
   const countCritical = equipments.filter(e => e.status === 'critical').length;
   const countAlert = equipments.filter(e => e.status === 'alert').length;
   const countMaintenance = equipments.filter(e => e.status === 'maintenance').length;
+  const recentRequests = [...requests]
+    .sort((left, right) => new Date(right.reportedAt).getTime() - new Date(left.reportedAt).getTime())
+    .slice(0, 3);
+  const alertEquipments = equipments
+    .filter(equipment => equipment.status === 'alert' || equipment.status === 'critical')
+    .sort((left, right) => {
+      if (left.status !== right.status) return left.status === 'critical' ? -1 : 1;
+      return left.name.localeCompare(right.name, 'pt-BR');
+    })
+    .slice(0, 3);
+
+  const categoryLabels: Record<MaintenanceRequest['category'], string> = {
+    plumbing: 'Hidráulica',
+    electrical: 'Elétrica',
+    elevators: 'Elevadores',
+    common_area: 'Área comum',
+    security: 'Segurança',
+    gardens: 'Jardinagem',
+    structural: 'Estrutural',
+    other: 'Outros',
+  };
+  const priorityLabels: Record<MaintenanceRequest['priority'], string> = {
+    low: 'Baixa',
+    medium: 'Média',
+    high: 'Alta',
+    urgent: 'Urgente',
+  };
+  const requestStatusLabels: Record<MaintenanceRequest['status'], string> = {
+    reported: 'Aberta',
+    in_progress: 'Em andamento',
+    resolved: 'Resolvida',
+    cancelled: 'Cancelada',
+  };
 
   const equipmentStatusData = [
     { label: 'Operacional', value: countOperational, color: '#34d399' },
@@ -276,30 +309,39 @@ export default function Dashboard({
             </button>
           </div>
 
-          <div className="space-y-3 flex-1">
-            {/* Ticket 1: Limpeza da caixa d'água */}
-            <div className="p-4 bg-[#0d0e12]/40 rounded-xl border border-zinc-800/80 flex items-center justify-between group hover:border-zinc-700 transition-colors">
-              <div className="space-y-1 pr-4">
-                <h4 className="font-bold text-sm text-white group-hover:text-emerald-400 transition-colors">Limpeza da caixa d'água</h4>
-                <p className="text-zinc-500 text-xs text-left">Corretiva Emerg.</p>
+          <div data-testid="recent-service-orders" className="space-y-3 flex-1">
+            {recentRequests.length === 0 ? (
+              <div data-testid="recent-service-orders-empty" className="min-h-24 px-4 py-6 bg-[#0d0e12]/30 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center text-center">
+                <ClipboardList className="w-5 h-5 text-zinc-600 mb-2" />
+                <p className="text-xs font-semibold text-zinc-300">Nenhuma ordem de serviço cadastrada</p>
+                <p className="text-[11px] text-zinc-500 mt-1">Novas solicitações aparecerão aqui automaticamente.</p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="px-2.5 py-0.5 rounded border border-[#6d511a] text-[#fab01c] bg-[#fab01c]/5 text-[10px] font-bold uppercase">media</span>
-                <span className="px-2.5 py-0.5 rounded border border-[#6d511a] text-[#fab01c] bg-[#fab01c]/5 text-[10px] font-bold uppercase">pendente</span>
-              </div>
-            </div>
-
-            {/* Ticket 2: [Auto] Manutenção preventiva elevador d... */}
-            <div className="p-4 bg-[#0d0e12]/40 rounded-xl border border-zinc-800/80 flex items-center justify-between group hover:border-zinc-700 transition-colors">
-              <div className="space-y-1 pr-4">
-                <h4 className="font-bold text-sm text-white group-hover:text-emerald-400 transition-colors">[Auto] Manutenção preventiva elevador d...</h4>
-                <p className="text-zinc-500 text-xs text-left">Preventiva</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="px-2.5 py-0.5 rounded border border-[#6d511a] text-[#fab01c] bg-[#fab01c]/5 text-[10px] font-bold uppercase">media</span>
-                <span className="px-2.5 py-0.5 rounded border border-[#6d511a] text-[#fab01c] bg-[#fab01c]/5 text-[10px] font-bold uppercase">pendente</span>
-              </div>
-            </div>
+            ) : (
+              recentRequests.map(request => (
+                <div key={request.id} data-testid="recent-service-order" className="p-4 bg-[#0d0e12]/40 rounded-xl border border-zinc-800/80 flex items-center justify-between gap-4 group hover:border-zinc-700 transition-colors">
+                  <div className="space-y-1 min-w-0">
+                    <h4 className="font-bold text-sm text-white group-hover:text-emerald-400 transition-colors truncate">{request.title}</h4>
+                    <p className="text-zinc-500 text-xs text-left">
+                      {categoryLabels[request.category]} · {new Date(request.reportedAt).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="px-2.5 py-0.5 rounded border border-zinc-700 text-zinc-300 bg-zinc-800/30 text-[10px] font-bold uppercase">
+                      {priorityLabels[request.priority]}
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded border text-[10px] font-bold uppercase ${
+                      request.status === 'resolved'
+                        ? 'border-emerald-900 text-emerald-400 bg-emerald-950/20'
+                        : request.status === 'cancelled'
+                          ? 'border-zinc-700 text-zinc-500 bg-zinc-900/30'
+                          : 'border-[#6d511a] text-[#fab01c] bg-[#fab01c]/5'
+                    }`}>
+                      {requestStatusLabels[request.status]}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -319,28 +361,34 @@ export default function Dashboard({
             </button>
           </div>
 
-          <div className="space-y-3 flex-1">
-            {/* Alert Equipment 1: Bomba Centrífuga Principal */}
-            <div className="p-4 bg-[#0d0e12]/40 rounded-xl border border-zinc-800/80 flex items-center justify-between group hover:border-zinc-700 transition-colors">
-              <div className="space-y-1">
-                <h4 className="font-bold text-sm text-white group-hover:text-orange-400 transition-colors">Bomba Centrífuga Principal</h4>
-                <p className="text-zinc-500 text-xs text-left">Casa de Bombas</p>
+          <div data-testid="alert-equipment-list" className="space-y-3 flex-1">
+            {alertEquipments.length === 0 ? (
+              <div data-testid="alert-equipment-empty" className="min-h-24 px-4 py-6 bg-[#0d0e12]/30 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center text-center">
+                <Wrench className="w-5 h-5 text-zinc-600 mb-2" />
+                <p className="text-xs font-semibold text-zinc-300">Nenhum equipamento em alerta</p>
+                <p className="text-[11px] text-zinc-500 mt-1">O inventário não possui ativos em alerta ou estado crítico.</p>
               </div>
-              <div className="shrink-0">
-                <span className="px-3 py-1 rounded bg-orange-950/25 border border-orange-900 text-orange-400 text-[10px] font-bold uppercase">Alerta</span>
-              </div>
-            </div>
-
-            {/* Alert Equipment 2: Quadro Elétrico Geral */}
-            <div className="p-4 bg-[#0d0e12]/40 rounded-xl border border-zinc-800/80 flex items-center justify-between group hover:border-zinc-700 transition-colors">
-              <div className="space-y-1">
-                <h4 className="font-bold text-sm text-white group-hover:text-red-400 transition-colors">Quadro Elétrico Geral</h4>
-                <p className="text-zinc-500 text-xs text-left">Sala Elétrica</p>
-              </div>
-              <div className="shrink-0">
-                <span className="px-3 py-1 rounded bg-red-950/35 border border-red-900 text-red-500 text-[10px] font-bold uppercase">Crítico</span>
-              </div>
-            </div>
+            ) : (
+              alertEquipments.map(equipment => (
+                <div key={equipment.id} data-testid="alert-equipment" className="p-4 bg-[#0d0e12]/40 rounded-xl border border-zinc-800/80 flex items-center justify-between gap-4 group hover:border-zinc-700 transition-colors">
+                  <div className="space-y-1 min-w-0">
+                    <h4 className={`font-bold text-sm text-white transition-colors truncate ${
+                      equipment.status === 'critical' ? 'group-hover:text-red-400' : 'group-hover:text-orange-400'
+                    }`}>
+                      {equipment.name}
+                    </h4>
+                    <p className="text-zinc-500 text-xs text-left truncate">{equipment.location}</p>
+                  </div>
+                  <span className={`px-3 py-1 rounded text-[10px] font-bold uppercase shrink-0 ${
+                    equipment.status === 'critical'
+                      ? 'bg-red-950/35 border border-red-900 text-red-500'
+                      : 'bg-orange-950/25 border border-orange-900 text-orange-400'
+                  }`}>
+                    {equipment.status === 'critical' ? 'Crítico' : 'Alerta'}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
