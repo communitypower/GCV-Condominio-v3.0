@@ -5,6 +5,7 @@ import { cleanupE2EData, TEST_PREFIX, uniqueName } from './helpers/cleanup';
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 const isProductionTarget = baseURL.includes('gcv-app-production-production.up.railway.app');
 const expectAiEnabled = process.env.E2E_EXPECT_AI_ENABLED === 'true';
+const visibleUuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
 async function passwordLogin(page: Page, email = 'sindico@gcv.com.br', password = 'sindico123') {
   await page.goto('/');
@@ -91,6 +92,19 @@ test('password session, dashboard shell, sidebar workflows, and logout work', as
   for (const [tab, expectedContent] of menuItems) {
     await page.getByTestId(`nav-${tab}`).click();
     await expect(page.getByTestId('dashboard-main')).toContainText(expectedContent);
+    await expect(page.getByTestId('dashboard-main')).not.toContainText(visibleUuidPattern);
+  }
+
+  await page.getByTestId('nav-edificios').click();
+  const firstUnit = page.getByTestId('unit-card').first();
+  if (await firstUnit.count()) {
+    await expect(firstUnit).toContainText(/Unidade\s+\S+/i);
+    await firstUnit.click();
+    await expect(page.getByTestId('unit-details')).toBeVisible();
+    await expect(page.getByTestId('unit-details')).not.toContainText(visibleUuidPattern);
+    await expect(page.getByTestId('unit-details')).toContainText(/Unidade\s+\S+/i);
+    await page.locator('#drawer-close').click();
+    await expect(page.getByTestId('unit-details')).toBeHidden();
   }
 
   await page.getByRole('button', { name: /ENCERRAR SESSÃO/i }).click();

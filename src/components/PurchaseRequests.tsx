@@ -91,7 +91,9 @@ export default function PurchaseRequests({
           <div key={p.id} className="bg-[#14161b] rounded-xl border border-zinc-800 p-5 flex flex-col justify-between space-y-4 shadow-md">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-mono text-zinc-500 font-bold">{p.id}</span>
+                <span className="text-[10px] text-zinc-500 font-semibold">
+                  Solicitado em {new Date(p.createdAt).toLocaleDateString('pt-BR')}
+                </span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                   p.status === 'approved' ? 'bg-[#10b981]/15 text-[#10b981] border border-[#10b981]/20' :
                   p.status === 'rejected' ? 'bg-red-500/15 text-red-400 border border-red-500/10' :

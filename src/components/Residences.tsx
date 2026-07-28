@@ -30,7 +30,7 @@ interface ResidencesProps {
   billings: Billing[];
   maintenanceRequests: MaintenanceRequest[];
   onUpdateUnit: (updatedUnit: Unit) => void;
-  onAddUnit: (newUnit: Unit) => void;
+  onAddUnit: (newUnit: Omit<Unit, 'id'>) => void;
 }
 
 export default function Residences({
@@ -60,7 +60,6 @@ export default function Residences({
 
   // Add unit state
   const [isAdding, setIsAdding] = useState(false);
-  const [newId, setNewId] = useState('');
   const [newBlock, setNewBlock] = useState('Bloco A');
   const [newNumber, setNewNumber] = useState('');
   const [newOwner, setNewOwner] = useState('');
@@ -101,15 +100,14 @@ export default function Residences({
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newId || !newNumber) {
-      alert('Favor preencher o identificador único e o número da unidade.');
+    if (!newNumber) {
+      alert('Favor preencher o número da unidade.');
       return;
     }
 
     const calculatedFraction = newType === 'penthouse' ? 0.016 : newType === 'house' ? 0.024 : 0.008;
 
-    const unitToAdd: Unit = {
-      id: newId,
+    const unitToAdd: Omit<Unit, 'id'> = {
       block: newBlock,
       number: newNumber,
       ownerName: newOwner || 'Proprietário Não Registrado',
@@ -123,7 +121,6 @@ export default function Residences({
     onAddUnit(unitToAdd);
     setIsAdding(false);
     // Reset fields
-    setNewId('');
     setNewNumber('');
     setNewOwner('');
     setNewEmail('');
@@ -133,7 +130,6 @@ export default function Residences({
   // Filter lists
   const filteredUnits = units.filter(unit => {
     const matchesSearch = 
-      unit.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       unit.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       unit.block.toLowerCase().includes(searchQuery.toLowerCase()) ||
       unit.number.toLowerCase().includes(searchQuery.toLowerCase());
@@ -270,15 +266,16 @@ export default function Residences({
             return (
               <motion.div
                 key={unit.id}
+                data-testid="unit-card"
                 layoutId={`unit-card-${unit.id}`}
                 onClick={() => openUnitDetails(unit)}
                 className="bg-[#14161A] rounded-2xl p-5 border border-slate-800 hover:border-[#D4AF37]/50 shadow-md hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-4 select-none"
               >
                 <div className="space-y-2">
-                  {/* Top line ID & Type */}
+                  {/* Unit number and block */}
                   <div className="flex justify-between items-start">
-                    <span className="font-mono font-bold text-base text-[#D4AF37] bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1">
-                      {unit.id}
+                    <span className="font-bold text-base text-[#D4AF37] bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1">
+                      Unidade {unit.number}
                     </span>
                     <span className="text-[10px] uppercase font-bold text-slate-500 mt-1">
                       {unit.block}
@@ -337,14 +334,15 @@ export default function Residences({
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              data-testid="unit-details"
               className="relative w-full max-w-lg bg-[#14161A] h-full shadow-2xl flex flex-col justify-between overflow-hidden border-l border-slate-800/60 z-10"
             >
               {/* Header */}
               <div className="p-6 bg-slate-950 text-white flex items-center justify-between border-b border-slate-800/50">
                 <div>
                   <div className="flex items-center gap-3">
-                    <span className="font-mono font-bold text-lg bg-orange-950/20 text-[#D4AF37] border border-orange-900/30 rounded-lg px-3 py-1">
-                      {selectedUnit.id}
+                    <span className="font-bold text-lg bg-orange-950/20 text-[#D4AF37] border border-orange-900/30 rounded-lg px-3 py-1">
+                      Unidade {selectedUnit.number}
                     </span>
                     <span className="text-xs uppercase font-bold text-slate-500 tracking-wider font-mono">{selectedUnit.block}</span>
                   </div>
@@ -540,8 +538,6 @@ export default function Residences({
                                 <div className="space-y-0.5">
                                   <span className="font-semibold text-slate-300">{req.title}</span>
                                   <div className="flex gap-2 text-[10px] text-slate-500">
-                                    <span className="font-mono">{req.id}</span>
-                                    <span>•</span>
                                     <span>{new Date(req.reportedAt).toLocaleDateString('pt-BR')}</span>
                                   </div>
                                 </div>
@@ -649,20 +645,8 @@ export default function Residences({
 
               {/* Add Unit Form Body */}
               <form id="add-unit-form-sub" onSubmit={handleAddSubmit} className="p-6 space-y-4">
-                {/* ID & block & number */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cód. Unidade</label>
-                    <input
-                      id="new-unit-id"
-                      type="text"
-                      required
-                      placeholder="Ex: A-404"
-                      value={newId}
-                      onChange={(e) => setNewId(e.target.value)}
-                      className="w-full px-3 py-2 bg-[#0F1115] border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
-                    />
-                  </div>
+                {/* Block and unit number */}
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bloco / Setor</label>
                     <select

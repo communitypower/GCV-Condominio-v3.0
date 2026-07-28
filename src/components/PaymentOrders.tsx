@@ -86,9 +86,9 @@ export default function PaymentOrders({
 
       <div className="bg-[#14161b] rounded-xl border border-zinc-800 overflow-hidden">
         <div className="p-4 border-b border-zinc-850 bg-[#0d0e12]/40 text-xs font-bold text-zinc-400 grid grid-cols-12 gap-4">
-          <div className="col-span-2">ID DO LANÇAM.</div>
+          <div className="col-span-2">DATA</div>
           <div className="col-span-3">FAVORECIDO / CREDOR</div>
-          <div className="col-span-3">DESCRIÇÃOtécnica</div>
+          <div className="col-span-3">DESCRIÇÃO TÉCNICA</div>
           <div className="col-span-2">VENCIMENTO</div>
           <div className="col-span-1 text-right">VALOR</div>
           <div className="col-span-1 text-right">AÇÕES / STATUS</div>
@@ -98,7 +98,9 @@ export default function PaymentOrders({
           {!loading && !error && payments.length === 0 && <div className="p-6 text-center text-sm text-zinc-400">Nenhuma ordem de pagamento cadastrada.</div>}
           {payments.map(p => (
             <div key={p.id} className="p-4 grid grid-cols-12 gap-4 text-xs items-center hover:bg-zinc-850/20 transition-colors">
-              <div className="col-span-2 font-mono text-zinc-500 font-bold">{p.id}</div>
+              <div className="col-span-2 text-zinc-400">
+                {p.createdAt ? new Date(p.createdAt).toLocaleDateString('pt-BR') : 'Pendente'}
+              </div>
               <div className="col-span-3 text-white font-bold">{p.recipient}</div>
               <div className="col-span-3 text-zinc-400 truncate">{p.description}</div>
               <div className="col-span-2 text-zinc-400 font-mono">{new Date(p.dueDate).toLocaleDateString('pt-BR')}</div>

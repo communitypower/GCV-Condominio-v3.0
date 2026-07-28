@@ -15,6 +15,7 @@ import {
   TrendingUp,
   RotateCcw
 } from 'lucide-react';
+import { unitLabelById } from '../utils/displayLabels';
 
 interface AIAssistantProps {
   units: any[];
@@ -174,11 +175,11 @@ export default function AIAssistent({
         equipamentosAlertaCritico: equipments.filter(e => e.status === 'alert' || e.status === 'critical').length,
         ordensServicoAbertas: maintenanceRequests.filter(r => r.status === 'reported' || r.status === 'in_progress').length,
       },
-      equipamentos: equipments.map(e => ({ id: e.id, nome: e.name, local: e.location, status: e.status, proximaInspecao: e.nextInspection })),
-      ordensServico: maintenanceRequests.map(r => ({ id: r.id, unidade: r.unitId, titulo: r.title, categoria: r.category, prioridade: r.priority, status: r.status, data: r.reportedAt })),
-      faturamento: billings.map(b => ({ id: b.id, unidade: b.unitId, vencimento: b.dueDate, valor: b.amount, status: b.status })),
-      compras: purchases.map(p => ({ id: p.id, item: p.items, valor: p.amount, status: p.status, solicitante: p.requester })),
-      contasPagar: payments.map(p => ({ id: p.id, descricao: p.description, valor: p.amount, status: p.status, vencimento: p.dueDate }))
+      equipamentos: equipments.map(e => ({ nome: e.name, local: e.location, status: e.status, proximaInspecao: e.nextInspection })),
+      ordensServico: maintenanceRequests.map(r => ({ unidade: unitLabelById(units, r.unitId), titulo: r.title, categoria: r.category, prioridade: r.priority, status: r.status, data: r.reportedAt })),
+      faturamento: billings.map(b => ({ unidade: unitLabelById(units, b.unitId), vencimento: b.dueDate, valor: b.amount, status: b.status })),
+      compras: purchases.map(p => ({ item: p.items, valor: p.amount, status: p.status, solicitante: p.requester })),
+      contasPagar: payments.map(p => ({ descricao: p.description, valor: p.amount, status: p.status, vencimento: p.dueDate }))
     };
   };
 

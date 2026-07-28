@@ -22,6 +22,7 @@ import {
   List
 } from 'lucide-react';
 import { Unit, MaintenanceRequest, MaintenanceStatus, MaintenancePriority, MaintenanceCategory, MaintenanceLog } from '../types';
+import { unitLabelById, unitNumberById } from '../utils/displayLabels';
 
 interface MaintenanceProps {
   units: Unit[];
@@ -147,7 +148,7 @@ export default function Maintenance({
         {
           id: `log-init`,
           author: 'Sistemas GCV',
-          comment: `Chamado registrado por Cláudio (Síndico). Alvo: ${newUnitId === 'COMMON' ? 'Área Comum' : `Unidade ${newUnitId}`}`,
+          comment: `Chamado registrado por Cláudio (Síndico). Alvo: ${unitLabelById(units, newUnitId)}`,
           createdAt: new Date().toISOString(),
         }
       ]
@@ -171,8 +172,7 @@ export default function Maintenance({
     const matchesSearch = 
       req.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
       req.description.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      req.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      req.unitId.toLowerCase().includes(searchQuery.toLowerCase());
+      unitLabelById(units, req.unitId).toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesCategory = categoryFilter === 'all' || req.category === categoryFilter;
     const matchesPriority = priorityFilter === 'all' || req.priority === priorityFilter;
@@ -267,7 +267,7 @@ export default function Maintenance({
           <input
             id="ticket-search-input"
             type="text"
-            placeholder="Buscar chamados por ID, título ou unidade..."
+            placeholder="Buscar chamados por título, descrição ou unidade..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-[#0F1115] border border-slate-800 rounded-lg text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
@@ -322,7 +322,7 @@ export default function Maintenance({
             <div className="space-y-3 min-h-[350px] overflow-y-auto max-h-[500px] pr-1">
               {getColTickets('reported').map(req => (
                 <div key={req.id}>
-                  <KanbanCard req={req} onClick={() => handleOpenTicket(req)} labels={categoryLabels} labelsPri={priorityLabels} colorsPri={priorityColors} />
+                  <KanbanCard req={req} units={units} onClick={() => handleOpenTicket(req)} labels={categoryLabels} labelsPri={priorityLabels} colorsPri={priorityColors} />
                 </div>
               ))}
               {getColTickets('reported').length === 0 && (
@@ -342,7 +342,7 @@ export default function Maintenance({
             <div className="space-y-3 min-h-[350px] overflow-y-auto max-h-[500px] pr-1">
               {getColTickets('in_progress').map(req => (
                 <div key={req.id}>
-                  <KanbanCard req={req} onClick={() => handleOpenTicket(req)} labels={categoryLabels} labelsPri={priorityLabels} colorsPri={priorityColors} />
+                  <KanbanCard req={req} units={units} onClick={() => handleOpenTicket(req)} labels={categoryLabels} labelsPri={priorityLabels} colorsPri={priorityColors} />
                 </div>
               ))}
               {getColTickets('in_progress').length === 0 && (
@@ -362,7 +362,7 @@ export default function Maintenance({
             <div className="space-y-3 min-h-[350px] overflow-y-auto max-h-[500px] pr-1">
               {getColTickets('resolved').map(req => (
                 <div key={req.id}>
-                  <KanbanCard req={req} onClick={() => handleOpenTicket(req)} labels={categoryLabels} labelsPri={priorityLabels} colorsPri={priorityColors} />
+                  <KanbanCard req={req} units={units} onClick={() => handleOpenTicket(req)} labels={categoryLabels} labelsPri={priorityLabels} colorsPri={priorityColors} />
                 </div>
               ))}
               {getColTickets('resolved').length === 0 && (
@@ -381,7 +381,7 @@ export default function Maintenance({
               <table className="w-full text-left font-medium">
                 <thead>
                   <tr className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800 uppercase tracking-wider">
-                    <th className="p-4">Identificação</th>
+                    <th className="p-4">Abertura</th>
                     <th className="p-4">Alvo</th>
                     <th className="p-4">Área / Categoria</th>
                     <th className="p-4">Título do Chamado</th>
@@ -397,10 +397,10 @@ export default function Maintenance({
                       onClick={() => handleOpenTicket(req)}
                       className="hover:bg-slate-900/30 cursor-pointer transition-colors"
                     >
-                      <td className="p-4 font-mono font-bold text-[#D4AF37]">{req.id}</td>
+                      <td className="p-4 text-slate-400">{new Date(req.reportedAt).toLocaleDateString('pt-BR')}</td>
                       <td className="p-4">
                         <span className="bg-[#0F1115] border border-slate-800 px-2 py-0.5 rounded font-mono font-bold text-slate-300">
-                          {req.unitId === 'COMMON' ? 'Geral' : req.unitId}
+                          {unitNumberById(units, req.unitId)}
                         </span>
                       </td>
                       <td className="p-4 truncate max-w-[150px] text-slate-400">{categoryLabels[req.category]}</td>
@@ -443,13 +443,8 @@ export default function Maintenance({
               {/* Overlay Modal Header */}
               <div className="p-5 bg-slate-950 text-white flex justify-between items-center border-b border-slate-800">
                 <div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono bg-slate-900 text-[#D4AF37] border border-slate-800 px-2 py-0.5 rounded text-xs font-bold">
-                      {selectedReq.id}
-                    </span>
-                    <span className="text-xs text-slate-500 uppercase font-semibold">
-                      {selectedReq.unitId === 'COMMON' ? 'Área Comum Predial' : `Imóvel: Unidade ${selectedReq.unitId}`}
-                    </span>
+                  <div className="text-xs text-slate-500 uppercase font-semibold">
+                    {unitLabelById(units, selectedReq.unitId)}
                   </div>
                   <h3 className="font-display font-semibold text-[#D4AF37] text-base mt-2 tracking-tight">{selectedReq.title}</h3>
                 </div>
@@ -664,7 +659,7 @@ export default function Maintenance({
                   >
                     <option value="COMMON">Área Comum Geral</option>
                     {units.map(u => (
-                      <option key={u.id} value={u.id}>Residência - Unidade {u.id} ({u.ownerName})</option>
+                      <option key={u.id} value={u.id}>{u.block} - Unidade {u.number} ({u.ownerName})</option>
                     ))}
                   </select>
                 </div>
@@ -786,13 +781,14 @@ export default function Maintenance({
 // Kanban individual Draggable Card Representational Item
 interface KanbanCardProps {
   req: MaintenanceRequest;
+  units: Unit[];
   onClick: () => void;
   labels: Record<MaintenanceCategory, string>;
   labelsPri: Record<MaintenancePriority, string>;
   colorsPri: Record<MaintenancePriority, string>;
 }
 
-function KanbanCard({ req, onClick, labels, labelsPri, colorsPri }: KanbanCardProps) {
+function KanbanCard({ req, units, onClick, labels, labelsPri, colorsPri }: KanbanCardProps) {
   return (
     <motion.div
       layoutId={`card-task-${req.id}`}
@@ -808,9 +804,11 @@ function KanbanCard({ req, onClick, labels, labelsPri, colorsPri }: KanbanCardPr
       }`} />
 
       <div className="flex justify-between items-start pt-1">
-        <span className="font-mono text-[10px] font-bold text-[#D4AF37]">{req.id}</span>
+        <span className="text-[10px] font-semibold text-slate-500">
+          {new Date(req.reportedAt).toLocaleDateString('pt-BR')}
+        </span>
         <span className="font-mono font-bold text-[10px] tracking-tight bg-slate-950 border border-slate-800 px-1.5 py-0.5 rounded text-slate-400 max-w-[80px] truncate">
-          {req.unitId === 'COMMON' ? 'Área Comum' : req.unitId}
+          {unitNumberById(units, req.unitId)}
         </span>
       </div>
 

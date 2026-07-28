@@ -24,6 +24,7 @@ import {
   Receipt
 } from 'lucide-react';
 import { Unit, Billing, BillingStatus } from '../types';
+import { billingReference, findUnit, unitLabelById } from '../utils/displayLabels';
 
 interface BillingTrackerProps {
   units: Unit[];
@@ -96,10 +97,10 @@ export default function BillingTracker({
   const filteredBillings = monthBillings.filter(bil => {
     const unit = units.find(u => u.id === bil.unitId);
     const ownerName = unit ? unit.ownerName.toLowerCase() : '';
-    const unitId = bil.unitId.toLowerCase();
+    const unitLabel = unitLabelById(units, bil.unitId).toLowerCase();
 
     const matchesSearch = 
-      unitId.includes(searchQuery.toLowerCase()) || 
+      unitLabel.includes(searchQuery.toLowerCase()) ||
       ownerName.includes(searchQuery.toLowerCase());
 
     const matchesStatus = statusFilter === 'all' || bil.status === statusFilter;
@@ -312,7 +313,7 @@ export default function BillingTracker({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-950 border-b border-slate-800/60 text-slate-400 font-bold uppercase tracking-wider">
-                  <th className="p-4">Cód. Unidade</th>
+                  <th className="p-4">Unidade</th>
                   <th className="p-4">Responsável</th>
                   <th className="p-4 text-right">Valor Nominal</th>
                   <th className="p-4">Vencimento</th>
@@ -327,7 +328,7 @@ export default function BillingTracker({
                     <tr key={bil.id} className="hover:bg-slate-900/30 transition-colors">
                       <td className="p-4">
                         <span className="font-mono font-bold text-[#D4AF37] bg-[#0F1115] border border-slate-800 px-2 py-0.5 rounded">
-                          {unit?.number || bil.unitId}
+                          {unit?.number || 'Não identificada'}
                         </span>
                       </td>
                       <td className="p-4">
@@ -417,7 +418,7 @@ export default function BillingTracker({
 
               <form id="pay-registration-form" onSubmit={handleRegisterPayment} className="p-5 space-y-4 text-xs">
                 <div className="p-3 bg-[#0F1115] border border-slate-800/60 rounded-lg space-y-1.5 text-slate-300">
-                  <p className="text-slate-400">Unidade Devedora: <span className="font-mono font-bold text-[#D4AF37]">{payingBilling.unitId}</span></p>
+                  <p className="text-slate-400">Unidade Devedora: <span className="font-bold text-[#D4AF37]">{unitLabelById(units, payingBilling.unitId)}</span></p>
                   <p className="text-slate-400">Descrição do Boleto: <span className="font-semibold text-slate-200">{payingBilling.description}</span></p>
                   <p className="text-slate-400">Valor para Liquidar: <span className="font-extrabold text-white text-sm">{formatCurrency(payingBilling.amount)}</span></p>
                 </div>
@@ -536,7 +537,7 @@ export default function BillingTracker({
                   </div>
                   <div className="col-span-2 p-1.5 space-y-0.5 border-t border-slate-950">
                     <p className="text-[7.5px] font-bold text-slate-500 uppercase tracking-wide">Número do Documento</p>
-                    <p className="font-mono font-semibold text-slate-950">{viewingBilling.id.replace('BIL-', '')}</p>
+                    <p className="font-mono font-semibold text-slate-950">{billingReference(viewingBilling, units)}</p>
                   </div>
                   <div className="col-span-1 p-1.5 space-y-0.5 border-t border-slate-950">
                     <p className="text-[7.5px] font-bold text-slate-500 uppercase tracking-wide">Espécie Doc.</p>
@@ -608,11 +609,11 @@ export default function BillingTracker({
                   <p className="text-[7.5px] font-bold text-slate-550 uppercase tracking-wide">Pagador / Sacado</p>
                   <div className="flex justify-between font-bold text-slate-950">
                     <span>
-                      {units.find(u => u.id === viewingBilling.unitId)?.ownerName || 'Condômino Desconhecido'} — Unidade {viewingBilling.unitId}
+                      {findUnit(units, viewingBilling.unitId)?.ownerName || 'Condômino Desconhecido'} — {unitLabelById(units, viewingBilling.unitId)}
                     </span>
                     <span className="font-mono">CPF: ***.453.***-00</span>
                   </div>
-                  <p className="text-slate-505">Condomínio Bella Vista, Bloco {viewingBilling.unitId.split('-')[0]} nº {viewingBilling.unitId.split('-')[1]} — CEP 13084-250</p>
+                  <p className="text-slate-505">{unitLabelById(units, viewingBilling.unitId)}</p>
                 </div>
 
                 {/* High tech visual addition: PIX payment code next to Barcode */}
@@ -711,7 +712,7 @@ export default function BillingTracker({
                   >
                     <option value="">Selecione...</option>
                     {units.map(u => (
-                      <option key={u.id} value={u.id}>{u.id} - {u.ownerName} ({u.block})</option>
+                      <option key={u.id} value={u.id}>{u.block} - Unidade {u.number} ({u.ownerName})</option>
                     ))}
                   </select>
                 </div>
