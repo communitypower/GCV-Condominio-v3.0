@@ -103,7 +103,6 @@ export default function OperationLogs({
           <div key={l.id} className="bg-[#14161b] rounded-xl border border-zinc-850 p-5 shadow-sm space-y-3">
             <div className="flex justify-between items-start">
               <div className="space-y-0.5">
-                <span className="text-[10px] uppercase font-mono text-zinc-500 font-bold block">{l.id}</span>
                 <h3 className="font-bold text-base text-white">{l.title}</h3>
               </div>
               <div>{getLogTypeBadge(l.type)}</div>

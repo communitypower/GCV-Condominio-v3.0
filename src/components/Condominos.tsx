@@ -35,7 +35,7 @@ export default function Condominos({ condoId, units }: CondominosProps) {
         if (response.ok) {
           const data = await response.json();
           const mapped = data.map((r: any) => ({
-            unitId: r.unit?.number || r.unitId,
+            unitId: r.unit?.number || 'Não identificada',
             name: r.person?.name || '',
             phone: r.person?.phone || '',
             email: r.person?.email || '',

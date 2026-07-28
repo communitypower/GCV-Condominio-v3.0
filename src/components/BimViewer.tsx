@@ -204,7 +204,7 @@ export default function BimViewer({
                 <div key={eq.id} className="p-2.5 bg-[#0d0e12]/50 border border-zinc-850 rounded flex justify-between items-center">
                   <div>
                     <span className="font-semibold text-white block truncate max-w-[150px]">{eq.name}</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">{eq.id} • {eq.location}</span>
+                    <span className="text-[10px] text-zinc-500">{eq.category} · {eq.location}</span>
                   </div>
                   <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
                     eq.status === 'operational' ? 'bg-[#10b981]/10 text-[#10b981]' :

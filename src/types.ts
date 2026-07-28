@@ -7,7 +7,7 @@ export type UnitType = 'apartment' | 'house' | 'penthouse';
 export type UnitStatus = 'occupied' | 'vacant' | 'maintenance';
 
 export interface Unit {
-  id: string; // e.g. "A-101"
+  id: string; // Internal database identifier; use number/block in the UI.
   block: string; // e.g. "Bloco A"
   number: string; // e.g. "101"
   ownerName: string;

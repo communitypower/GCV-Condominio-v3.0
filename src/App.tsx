@@ -52,6 +52,7 @@ import UsersList from './components/UsersList';
 import AIAssistent from './components/AIAssistent';
 import GitHubIntegration from './components/GitHubIntegration';
 import DataImports from './components/DataImports';
+import { unitNumberById } from './utils/displayLabels';
 
 interface LoggedInUser {
   name: string;
@@ -435,7 +436,7 @@ export default function App() {
     }
   };
 
-  const handleAddUnit = async (newUnit: Unit) => {
+  const handleAddUnit = async (newUnit: Omit<Unit, 'id'>) => {
     try {
       // 1. Get buildings list for activeEdificioId
       const bRes = await fetch(`/api/v1/condominiums/${activeEdificioId}/buildings`);
@@ -552,7 +553,7 @@ export default function App() {
         }));
         setBillings(mappedBillings);
       }
-      triggerNotification(`Boleto ${billingId.replace('BIL-', '')} quitado em ${new Date(paidDateStr + 'T12:00:00').toLocaleDateString('pt-BR')}!`);
+      triggerNotification(`Boleto quitado em ${new Date(paidDateStr + 'T12:00:00').toLocaleDateString('pt-BR')}!`);
     } catch (error: any) {
       alert(error.message);
     }
@@ -596,7 +597,7 @@ export default function App() {
         }));
         setBillings(mappedBillings);
       }
-      triggerNotification(`Boleto cadastrado com sucesso para unidade ${newBilling.unitId}!`);
+      triggerNotification(`Boleto cadastrado com sucesso para a unidade ${unitNumberById(units, newBilling.unitId)}!`);
     } catch (error: any) {
       alert(error.message);
     }
@@ -680,7 +681,7 @@ export default function App() {
         logs: []
       };
       setMaintenanceRequests([createdTicket, ...maintenanceRequests]);
-      triggerNotification(`Chamado de manutenção ${data.id} aberto com sucesso!`);
+      triggerNotification('Chamado de manutenção aberto com sucesso!');
     } catch (error: any) {
       alert(error.message);
     }
@@ -743,7 +744,7 @@ export default function App() {
         }));
         setMaintenanceRequests(mappedTickets);
       }
-      triggerNotification(`Chamado ${updatedReq.id} atualizado com sucesso.`);
+      triggerNotification('Chamado atualizado com sucesso.');
     } catch (error: any) {
       alert(error.message);
     }
@@ -956,12 +957,12 @@ export default function App() {
 
   const handleApprovePurchase = async (id: string) => {
     await mutatePurchaseStatus(id, 'approved');
-    triggerNotification(`Requisição ${id} aprovada! Verba liberada.`);
+    triggerNotification('Requisição aprovada! Verba liberada.');
   };
 
   const handleRejectPurchase = async (id: string) => {
     await mutatePurchaseStatus(id, 'rejected');
-    triggerNotification(`Requisição ${id} cancelada.`);
+    triggerNotification('Requisição cancelada.');
   };
 
   const handleAddPurchase = async (newReq: Omit<PurchaseRequest, 'id' | 'status' | 'requester' | 'createdAt'>) => {
@@ -979,7 +980,7 @@ export default function App() {
     }
     const created = await response.json();
     setPurchases(current => [created, ...current]);
-    triggerNotification(`Lançada proposta de compra ${created.id} sob análise.`);
+    triggerNotification('Proposta de compra lançada e encaminhada para análise.');
   };
 
   const handleAddPayment = async (newPay: Omit<PaymentOrder, 'id' | 'status' | 'paidAt' | 'createdAt'>) => {
@@ -997,7 +998,7 @@ export default function App() {
     }
     const created = await response.json();
     setPayments(current => [created, ...current]);
-    triggerNotification(`Ordem de Pagamento ${created.id} criada.`);
+    triggerNotification('Ordem de pagamento criada.');
   };
 
   const handlePayPayment = async (id: string) => {
@@ -1015,7 +1016,7 @@ export default function App() {
     }
     const updated = await response.json();
     setPayments(current => current.map(item => item.id === id ? updated : item));
-    triggerNotification(`Fatura ${id} quitada e registrada no balanço!`);
+    triggerNotification('Fatura quitada e registrada no balanço!');
   };
 
   // Authentication handlers
@@ -1761,7 +1762,7 @@ export default function App() {
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-[10px] text-zinc-450">Vencimento: <span className="font-mono text-zinc-400">{new Date(bill.dueDate + 'T12:00:00').toLocaleDateString('pt-BR')}</span></span>
                               <span className="text-[10.5px] text-zinc-700">|</span>
-                              <span className="text-[10px] text-zinc-450">Fatura: <span className="font-mono text-zinc-400">{bill.id.replace('BIL-', '')}</span></span>
+                              <span className="text-[10px] text-zinc-450">Competência: <span className="font-mono text-zinc-400">{bill.monthString}</span></span>
                             </div>
                           </div>
 

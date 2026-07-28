@@ -44,7 +44,7 @@ export default function Equipments({
   const filtered = equipments.filter(eq => {
     const matchesSearch = eq.name.toLowerCase().includes(search.toLowerCase()) || 
                           eq.location.toLowerCase().includes(search.toLowerCase()) ||
-                          eq.id.toLowerCase().includes(search.toLowerCase());
+                          eq.category.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = filterStatus === 'all' || eq.status === filterStatus;
     const matchesCategory = filterCategory === 'all' || eq.category === filterCategory;
     return matchesSearch && matchesStatus && matchesCategory;
@@ -138,7 +138,7 @@ export default function Equipments({
           <span className="absolute left-3.5 top-3.5 text-zinc-500"><Search className="w-4 h-4" /></span>
           <input
             type="text"
-            placeholder="Pesquisar por equipamento pelo nome, localização ou ID..."
+            placeholder="Pesquisar por equipamento, localização ou categoria..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-[#0d0e12] border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-[#10b981] transition-all"
@@ -188,7 +188,7 @@ export default function Equipments({
           >
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[10px] uppercase font-mono bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">{eq.id}</span>
+                <span className="text-[10px] uppercase font-semibold bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">{eq.category}</span>
                 <h3 className="font-bold text-base text-white mt-1.5 leading-snug">{eq.name}</h3>
                 <p className="text-zinc-500 text-xs mt-0.5">{eq.location}</p>
               </div>
@@ -338,7 +338,7 @@ export default function Equipments({
           <div className="bg-[#14161b] rounded-xl border border-zinc-800 p-6 w-full max-w-md space-y-4">
             <div className="flex items-center justify-between border-b border-zinc-850 pb-2">
               <h3 className="text-lg font-bold text-white">
-                Editar Equipamento {selectedEqForEdit.id}
+                Editar {selectedEqForEdit.name}
               </h3>
               <button 
                 onClick={() => setSelectedEqForEdit(null)}

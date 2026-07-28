@@ -80,7 +80,9 @@ export default function MaintenancePlans({
                 <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
                   {p.frequency}
                 </span>
-                <span className="text-[10px] font-mono text-zinc-500">{p.id}</span>
+                <span className="text-[10px] text-zinc-500">
+                  Próxima em {new Date(p.nextOccurrence + 'T12:00:00').toLocaleDateString('pt-BR')}
+                </span>
               </div>
               <h3 className="font-bold text-base text-white">{p.title}</h3>
               <p className="text-zinc-400 text-xs leading-relaxed">{p.description}</p>
