@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { e2eSessionLogin } from './helpers/api';
 import { cleanupE2EData, TEST_PREFIX, uniqueName } from './helpers/cleanup';
+import type { Equipment, MaintenanceRequest } from '../../src/types';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 const isProductionTarget = baseURL.includes('gcv-app-production-production.up.railway.app');
@@ -116,6 +117,71 @@ test('resident session shows resident-oriented dashboard state', async ({ page }
   await expect(page.getByText(/Portal do Condômino/i)).toBeVisible();
   await expect(page.getByText(/Minhas Cobranças/i)).toBeVisible();
   await expect(page.getByText(/Minhas Solicitações de Reparo/i)).toBeVisible();
+});
+
+test('dashboard recent orders and equipment alerts reflect the active condominium APIs', async ({ page }) => {
+  await passwordLogin(page);
+  const activeBuildingSelector = page.getByTestId('active-building-selector');
+  await expect(activeBuildingSelector).toHaveValue(/^(?!__new__$).+/);
+  const condominiumId = await activeBuildingSelector.inputValue();
+  const { tickets, equipment } = await page.evaluate(async activeId => {
+    const [ticketsResponse, equipmentResponse] = await Promise.all([
+      fetch(`/api/v1/condominiums/${activeId}/tickets`),
+      fetch(`/api/v1/condominiums/${activeId}/equipment`),
+    ]);
+    if (!ticketsResponse.ok || !equipmentResponse.ok) {
+      throw new Error(`Dashboard API validation failed: tickets=${ticketsResponse.status}, equipment=${equipmentResponse.status}`);
+    }
+    return {
+      tickets: await ticketsResponse.json(),
+      equipment: await equipmentResponse.json(),
+    };
+  }, condominiumId) as { tickets: MaintenanceRequest[]; equipment: Equipment[] };
+  const expectedRecent = [...tickets]
+    .sort((left, right) => new Date(right.reportedAt).getTime() - new Date(left.reportedAt).getTime())
+    .slice(0, 3);
+  const expectedAlerts = equipment
+    .filter(item => item.status === 'alert' || item.status === 'critical')
+    .sort((left, right) => {
+      if (left.status !== right.status) return left.status === 'critical' ? -1 : 1;
+      return left.name.localeCompare(right.name, 'pt-BR');
+    })
+    .slice(0, 3);
+
+  await expect(page.getByTestId('recent-service-order')).toHaveCount(expectedRecent.length);
+  if (expectedRecent.length === 0) {
+    await expect(page.getByTestId('recent-service-orders-empty')).toBeVisible();
+  } else {
+    for (const ticket of expectedRecent) {
+      await expect(page.getByTestId('recent-service-orders')).toContainText(ticket.title);
+    }
+  }
+
+  await expect(page.getByTestId('alert-equipment')).toHaveCount(expectedAlerts.length);
+  if (expectedAlerts.length === 0) {
+    await expect(page.getByTestId('alert-equipment-empty')).toBeVisible();
+  } else {
+    for (const item of expectedAlerts) {
+      await expect(page.getByTestId('alert-equipment-list')).toContainText(item.name);
+    }
+  }
+
+});
+
+test('dashboard shows truthful empty states when no orders or equipment alerts exist', async ({ page }) => {
+  await page.route(/\/api\/v1\/condominiums\/[^/]+\/tickets(?:\?.*)?$/, route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+  );
+  await page.route(/\/api\/v1\/condominiums\/[^/]+\/equipment(?:\?.*)?$/, route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+  );
+
+  await passwordLogin(page);
+
+  await expect(page.getByTestId('recent-service-orders-empty')).toBeVisible();
+  await expect(page.getByTestId('alert-equipment-empty')).toBeVisible();
+  await expect(page.getByTestId('recent-service-orders')).not.toContainText("Limpeza da caixa d'água");
+  await expect(page.getByTestId('alert-equipment-list')).not.toContainText('Bomba Centrífuga Principal');
 });
 
 test('Google and Microsoft auth entrypoints are controlled', async ({ request }) => {
