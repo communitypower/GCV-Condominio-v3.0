@@ -47,19 +47,31 @@ router.post('/', requireAuth, validateBody(createCondominiumSchema), async (req:
     (membership: any) =>
       membership.accountId === accountId &&
       membership.condominiumId === null &&
-      [PlatformRole.admin, PlatformRole.syndic].includes(membership.role)
+      membership.role === PlatformRole.admin
   );
   if (!canCreateInAccount) {
     return res.status(403).json({ error: "Acesso negado: papel insuficiente nesta conta." });
   }
 
   try {
-    const condominium = await prisma.condominium.create({
-      data: {
-        name,
-        address,
-        accountId,
-      },
+    const condominium = await prisma.$transaction(async (tx) => {
+      const created = await tx.condominium.create({
+        data: { name, address, accountId },
+      });
+      await tx.auditEvent.create({
+        data: {
+          accountId,
+          condominiumId: created.id,
+          userId: req.user.id,
+          userEmail: req.user.email,
+          action: 'create',
+          entity: 'Condominium',
+          entityId: created.id,
+          details: `Condomínio ${created.name} criado.`,
+          ipAddress: req.ip,
+        },
+      });
+      return created;
     });
     res.status(201).json(condominium);
   } catch (error) {

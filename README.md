@@ -352,7 +352,7 @@ Nunca restaure diretamente sobre producao sem validar primeiro em banco de recup
 Este repositorio ja avancou alem de um prototipo visual, mas ainda ha pontos que devem ser tratados antes de operar dados reais de clientes:
 
 - Validar estrategia final de autenticacao gerenciada
-- Garantir isolamento multi-tenant em todas as rotas
+- Manter testes regressivos de isolamento multi-tenant e gestão de convites
 - Ampliar testes automatizados e e2e
 - Rever fluxo de documentos e LGPD
 - Desabilitar exportacoes GitHub/Gist em producao
@@ -363,6 +363,7 @@ Este repositorio ja avancou alem de um prototipo visual, mas ainda ha pontos que
 Consulte especialmente:
 
 - `docs/TARGET_PRODUCT_ARCHITECTURE.md` — arquitetura canônica para a evolução do produto completo
+- `docs/ONBOARDING_AND_ACCESS_IMPLEMENTATION.md` — onboarding, convites, memberships e bootstrap administrativo
 - `docs/CODEXGPT_FULL_PRODUCT_IMPLEMENTATION_PLAN.md` — gates e pacotes de execução pós-beta
 - `docs/GCV_SAAS_IMPLEMENTATION_MASTER_PLAN.md`
 - `docs/DEVOPS_PIPELINE_AND_OPERATIONS_PLAN.md`

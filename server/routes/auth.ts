@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { AuditAction, PrismaClient } from '@prisma/client';
+import { AuditAction, MembershipStatus, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import * as openid from 'openid-client';
 import { webcrypto } from 'node:crypto';
+import { isConfiguredSystemAdmin } from '../services/system-admin';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -33,9 +34,23 @@ function getAllowedBetaEmails() {
   );
 }
 
-function isBetaAllowed(email: string) {
+async function isEnvironmentAccessAllowed(email: string) {
   if (!isProductionLike()) return true;
-  return getAllowedBetaEmails().has(email.trim().toLowerCase());
+  const normalizedEmail = email.trim().toLowerCase();
+  if (getAllowedBetaEmails().has(normalizedEmail) || isConfiguredSystemAdmin(normalizedEmail)) return true;
+
+  const user = await prisma.user.findFirst({
+    where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+    select: {
+      isSystemAdmin: true,
+      memberships: {
+        where: { status: { in: [MembershipStatus.pending, MembershipStatus.active] } },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+  return Boolean(user?.isSystemAdmin || user?.memberships.length);
 }
 
 function escapeHtml(value: string) {
@@ -55,6 +70,24 @@ function setSessionCookie(res: any, userId: string) {
     maxAge: 24 * 60 * 60 * 1000,
     sameSite: 'lax',
   });
+}
+
+function toAuthUserPayload(user: {
+  id: string;
+  email: string;
+  isSystemAdmin: boolean;
+  person?: { name: string } | null;
+  memberships: { status: MembershipStatus }[];
+}, fallbackName = 'User') {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.person?.name || fallbackName,
+    isSystemAdmin: user.isSystemAdmin || isConfiguredSystemAdmin(user.email),
+    memberships: user.memberships.filter(
+      (membership) => membership.status === MembershipStatus.active
+    ),
+  };
 }
 
 async function writeAuthAudit(
@@ -89,8 +122,8 @@ async function writeAuthAudit(
 }
 
 async function writeAuthFailureForEmail(req: any, email: string, details: string) {
-  const user = await prisma.user.findUnique({
-    where: { email },
+  const user = await prisma.user.findFirst({
+    where: { email: { equals: email.trim(), mode: 'insensitive' } },
     include: { memberships: true },
   });
   await writeAuthAudit(req, user, AuditAction.auth_failed, details);
@@ -118,8 +151,8 @@ router.post('/login', async (req, res) => {
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email.trim(), mode: 'insensitive' } },
       include: { person: true, memberships: true },
     });
 
@@ -138,7 +171,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
 
-    if (!isBetaAllowed(user.email)) {
+    if (!(await isEnvironmentAccessAllowed(user.email))) {
       await writeAuthAudit(req, user, AuditAction.auth_failed, 'Tentativa de login bloqueada pela allowlist beta.');
       return res.status(403).json({ error: "Usuário não habilitado para este ambiente." });
     }
@@ -148,12 +181,7 @@ router.post('/login', async (req, res) => {
 
     res.json({
       message: "Autenticado com sucesso.",
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.person?.name || "User",
-        memberships: user.memberships,
-      },
+      user: toAuthUserPayload(user),
     });
   } catch (error) {
     console.error("Login Error:", error);
@@ -173,8 +201,8 @@ router.post('/mock-login', async (req, res) => {
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email.trim(), mode: 'insensitive' } },
       include: { person: true, memberships: true },
     });
 
@@ -189,12 +217,7 @@ router.post('/mock-login', async (req, res) => {
 
     res.json({
       message: "Autenticado com sucesso via mock login.",
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.person?.name || "Mock User",
-        memberships: user.memberships,
-      },
+      user: toAuthUserPayload(user, 'Mock User'),
     });
   } catch (error) {
     console.error("Mock Login Error:", error);
@@ -242,12 +265,7 @@ router.get('/me', async (req, res) => {
     }
 
     res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.person?.name || "Mock User",
-        memberships: user.memberships,
-      },
+      user: toAuthUserPayload(user, 'Mock User'),
     });
   } catch (error) {
     console.error("Auth Me Error:", error);
@@ -376,7 +394,7 @@ router.get('/google/callback', async (req, res) => {
       throw new Error("E-mail não fornecido pelo Google.");
     }
 
-    if (!isBetaAllowed(email)) {
+    if (!(await isEnvironmentAccessAllowed(email))) {
       await writeAuthFailureForEmail(req, email, 'Tentativa de login Google bloqueada pela allowlist beta.');
       return res.status(403).send(renderUnauthorizedEmail(email));
     }
@@ -396,8 +414,8 @@ router.get('/google/callback', async (req, res) => {
 
     if (!user) {
       // 2. Lookup existing user by email
-      let existingUser = await prisma.user.findUnique({
-        where: { email },
+      let existingUser = await prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
         include: { person: true, memberships: true },
       });
 
@@ -419,8 +437,8 @@ router.get('/google/callback', async (req, res) => {
         await writeAuthAudit(req, user, AuditAction.auth_login, 'Conta Google vinculada ao usuário.', 'OauthAccount', providerUserId);
       } else {
         // 3. Check if a Person is pre-registered
-        const existingPerson = await prisma.person.findUnique({
-          where: { email },
+        const existingPerson = await prisma.person.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' } },
         });
 
         if (!existingPerson) {
@@ -431,7 +449,7 @@ router.get('/google/callback', async (req, res) => {
         // Create new User
         const newUser = await prisma.user.create({
           data: {
-            email,
+            email: email.trim().toLowerCase(),
             personId: existingPerson.id,
           },
         });
@@ -461,12 +479,7 @@ router.get('/google/callback', async (req, res) => {
     setSessionCookie(res, user.id);
     await writeAuthAudit(req, user, AuditAction.auth_login, 'Login Google realizado com sucesso.');
 
-    const payloadUser = {
-      id: user.id,
-      email: user.email,
-      name: user.person?.name || "User",
-      memberships: user.memberships,
-    };
+    const payloadUser = toAuthUserPayload(user);
 
     res.send(`
       <html>
@@ -602,7 +615,7 @@ router.get('/microsoft/callback', async (req, res) => {
       throw new Error("E-mail não fornecido pela Microsoft.");
     }
 
-    if (!isBetaAllowed(email)) {
+    if (!(await isEnvironmentAccessAllowed(email))) {
       await writeAuthFailureForEmail(req, email, 'Tentativa de login Microsoft bloqueada pela allowlist beta.');
       return res.status(403).send(renderUnauthorizedEmail(email));
     }
@@ -622,8 +635,8 @@ router.get('/microsoft/callback', async (req, res) => {
 
     if (!user) {
       // 2. Lookup existing user by email
-      let existingUser = await prisma.user.findUnique({
-        where: { email },
+      let existingUser = await prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
         include: { person: true, memberships: true },
       });
 
@@ -645,8 +658,8 @@ router.get('/microsoft/callback', async (req, res) => {
         await writeAuthAudit(req, user, AuditAction.auth_login, 'Conta Microsoft vinculada ao usuário.', 'OauthAccount', providerUserId);
       } else {
         // 3. Check if a Person is pre-registered
-        const existingPerson = await prisma.person.findUnique({
-          where: { email },
+        const existingPerson = await prisma.person.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' } },
         });
 
         if (!existingPerson) {
@@ -657,7 +670,7 @@ router.get('/microsoft/callback', async (req, res) => {
         // Create new User
         const newUser = await prisma.user.create({
           data: {
-            email,
+            email: email.trim().toLowerCase(),
             personId: existingPerson.id,
           },
         });
@@ -687,12 +700,7 @@ router.get('/microsoft/callback', async (req, res) => {
     setSessionCookie(res, user.id);
     await writeAuthAudit(req, user, AuditAction.auth_login, 'Login Microsoft realizado com sucesso.');
 
-    const payloadUser = {
-      id: user.id,
-      email: user.email,
-      name: user.person?.name || "User",
-      memberships: user.memberships,
-    };
+    const payloadUser = toAuthUserPayload(user);
 
     res.send(`
       <html>

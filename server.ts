@@ -23,6 +23,8 @@ import importsRouter from "./server/routes/imports";
 import procurementRouter from "./server/routes/procurement";
 import paymentsRouter from "./server/routes/payments";
 import announcementsRouter from "./server/routes/announcements";
+import invitationsRouter from "./server/routes/invitations";
+import onboardingRouter from "./server/routes/onboarding";
 import { requireAuth } from "./server/middleware/auth";
 import { createCsrfProtection } from "./server/middleware/csrf";
 
@@ -148,7 +150,9 @@ app.use("/api/v1/condominiums", importsRouter);
 app.use("/api/v1/condominiums", procurementRouter);
 app.use("/api/v1/condominiums", paymentsRouter);
 app.use("/api/v1/condominiums", announcementsRouter);
+app.use("/api/v1/condominiums", invitationsRouter);
 app.use("/api/v1/accounts", auditRouter);
+app.use("/api/v1/onboarding", sensitiveLimiter, onboardingRouter);
 app.use("/api/v1/testing", testingRouter);
 
 // Health check endpoint

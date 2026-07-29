@@ -218,7 +218,7 @@ async function runTests() {
       },
     });
 
-    console.log('Test 0: Testing production-like beta allowlist for password login...');
+    console.log('Test 0: Testing provisioned membership access beyond the legacy beta allowlist...');
     try {
       process.env.NODE_ENV = 'staging';
       process.env.BETA_ALLOWED_EMAILS = 'beta-only@example.com';
@@ -230,12 +230,13 @@ async function runTests() {
       });
       assert.strictEqual(mockLoginRes.status, 403, 'Mock login should be blocked in staging');
 
-      const blockedLoginRes = await fetch(`${BASE_URL}/login`, {
+      const provisionedLoginRes = await fetch(`${BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: allowlistTestEmail, password: allowlistTestPassword }),
       });
-      assert.strictEqual(blockedLoginRes.status, 403, 'Non-allowlisted staging user should be blocked');
+      assert.strictEqual(provisionedLoginRes.status, 200, 'Provisioned staging user should not depend on the legacy allowlist');
+      assert.ok(provisionedLoginRes.headers.get('set-cookie')?.includes('gcv_session'), 'Provisioned login should set session cookie');
 
       process.env.BETA_ALLOWED_EMAILS = allowlistTestEmail;
 
@@ -247,23 +248,13 @@ async function runTests() {
       assert.strictEqual(allowedLoginRes.status, 200, 'Allowlisted staging user should log in');
       assert.ok(allowedLoginRes.headers.get('set-cookie')?.includes('gcv_session'), 'Allowlisted login should set session cookie');
 
-      const [blockedAudit, allowedAudit] = await Promise.all([
-        prisma.auditEvent.findFirst({
-          where: {
-            userEmail: allowlistTestEmail,
-            action: AuditAction.auth_failed,
-            details: 'Tentativa de login bloqueada pela allowlist beta.',
-          },
-        }),
-        prisma.auditEvent.findFirst({
+      const allowedAudit = await prisma.auditEvent.findFirst({
           where: {
             userEmail: allowlistTestEmail,
             action: AuditAction.auth_login,
             details: 'Login por senha realizado com sucesso.',
           },
-        }),
-      ]);
-      assert.ok(blockedAudit, 'Blocked staging login should be audited');
+        });
       assert.ok(allowedAudit, 'Allowed staging login should be audited');
     } finally {
       process.env.NODE_ENV = originalNodeEnv;
@@ -273,7 +264,7 @@ async function runTests() {
         process.env.BETA_ALLOWED_EMAILS = originalBetaAllowedEmails;
       }
     }
-    console.log('✔ Production-like beta allowlist enforced for password login.');
+    console.log('✔ Provisioned membership is the primary production access control.');
 
     // Setup helper data: ensure a pre-registered Person exists for testing signup
     const preRegisteredEmail = 'new-social-user@gcv.com.br';
@@ -376,6 +367,8 @@ async function runTests() {
     assert.strictEqual(callbackRes2.status, 200, 'Callback should succeed');
     const callbackText2 = await callbackRes2.text();
     assert.ok(callbackText2.includes('GOOGLE_AUTH_SUCCESS'), 'Should postMessage GOOGLE_AUTH_SUCCESS');
+    assert.ok(callbackText2.includes('"isSystemAdmin":false'), 'Google payload should expose system-admin state');
+    assert.ok(callbackText2.includes('"memberships":[]'), 'Google payload should expose only active memberships');
     
     // Check cookie
     const sessionCookieHeader = callbackRes2.headers.get('set-cookie')!;
@@ -418,6 +411,8 @@ async function runTests() {
     });
 
     assert.strictEqual(callbackRes3.status, 200, 'Callback should succeed');
+    const callbackText3 = await callbackRes3.text();
+    assert.ok(callbackText3.includes('"isSystemAdmin":false'), 'Existing Google payload should expose system-admin state');
     
     const syndicUser = await prisma.user.findUnique({
       where: { email: 'sindico@gcv.com.br' },
@@ -469,6 +464,7 @@ async function runTests() {
     assert.strictEqual(callbackResMs.status, 200, 'Callback should succeed');
     const callbackTextMs = await callbackResMs.text();
     assert.ok(callbackTextMs.includes('MICROSOFT_AUTH_SUCCESS'), 'Should postMessage MICROSOFT_AUTH_SUCCESS');
+    assert.ok(callbackTextMs.includes('"isSystemAdmin":false'), 'Microsoft payload should expose system-admin state');
 
     const syndicUserMs = await prisma.user.findUnique({
       where: { email: 'sindico@gcv.com.br' },

@@ -52,6 +52,8 @@ import UsersList from './components/UsersList';
 import AIAssistent from './components/AIAssistent';
 import GitHubIntegration from './components/GitHubIntegration';
 import DataImports from './components/DataImports';
+import InvitationAcceptance from './components/InvitationAcceptance';
+import SystemOnboarding from './components/SystemOnboarding';
 import { unitNumberById } from './utils/displayLabels';
 
 interface LoggedInUser {
@@ -63,7 +65,13 @@ interface LoggedInUser {
   unitId?: string;
   accountId?: string;
   memberships?: any[];
+  isSystemAdmin?: boolean;
 }
+
+const administrativeRoles = new Set(['admin', 'syndic']);
+const staffRoles = new Set(['manager', 'council_member', 'accountant', 'doorman', 'vendor']);
+const uiRoleFor = (role?: string): LoggedInUser['role'] =>
+  administrativeRoles.has(role || '') ? 'admin' : staffRoles.has(role || '') ? 'staff' : 'resident';
 
 const PRESET_USERS: LoggedInUser[] = [
   {
@@ -97,7 +105,7 @@ export default function App() {
     | 'planos' | 'ordens' | 'logs'
     | 'documentacao' | 'bim' | 'ciclovida' | 'compras'
     | 'condominos' | 'cobrancas' | 'pagamentos' | 'demonstrativos'
-    | 'notificacoes' | 'usuarios' | 'ia_assistant' | 'github' | 'carga_dados';
+    | 'notificacoes' | 'usuarios' | 'ia_assistant' | 'github' | 'carga_dados' | 'onboarding';
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -163,17 +171,19 @@ export default function App() {
             setUser({
               ...matchedPreset,
               accountId: data.user.memberships?.[0]?.accountId,
-              memberships: data.user.memberships
+              memberships: data.user.memberships,
+              isSystemAdmin: data.user.isSystemAdmin,
             });
           } else {
             setUser({
               name: data.user.name,
               email: data.user.email,
-              role: data.user.memberships[0]?.role === 'syndic' ? 'admin' : data.user.memberships[0]?.role === 'manager' ? 'staff' : 'resident',
+              role: uiRoleFor(data.user.memberships[0]?.role),
               avatar: data.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
               description: data.user.memberships[0]?.role || 'Morador',
               accountId: data.user.memberships?.[0]?.accountId,
-              memberships: data.user.memberships
+              memberships: data.user.memberships,
+              isSystemAdmin: data.user.isSystemAdmin,
             });
           }
         } else {
@@ -216,9 +226,23 @@ export default function App() {
     fetchCondos();
   }, [user]);
 
+  const activeMembership = user?.memberships?.find((membership: any) =>
+    membership.condominiumId === activeEdificioId
+  ) || user?.memberships?.find((membership: any) => membership.condominiumId === null) || user?.memberships?.[0];
+  const currentRole = uiRoleFor(activeMembership?.role);
+  const isResident = currentRole === 'resident';
+  const canAdminister = currentRole === 'admin';
+  const residentUnit = units[0];
+
+  useEffect(() => {
+    if (user?.isSystemAdmin && !user.memberships?.length) {
+      setActiveTab('onboarding');
+    }
+  }, [user]);
+
   // Load and auto-transition states whenever activeEdificioId changes!
   useEffect(() => {
-    if (!user || !activeEdificioId) return;
+    if (!user || !activeEdificioId || (!activeMembership && user.isSystemAdmin)) return;
     localStorage.setItem('gcv_active_edificio_id', activeEdificioId);
     const controller = new AbortController();
     const request = (url: string) => fetch(url, { signal: controller.signal });
@@ -321,8 +345,8 @@ export default function App() {
         }
 
         // 6. Logs load
-        const accountId = user.accountId || user.memberships?.[0]?.accountId;
-        if (accountId) {
+        const accountId = activeMembership?.accountId || user.accountId || user.memberships?.[0]?.accountId;
+        if (accountId && !isResident) {
           const auditRes = await request(`/api/v1/accounts/${accountId}/audit?condominiumId=${activeEdificioId}`);
           if (auditRes.ok) {
             const loadedLogs = await auditRes.json();
@@ -348,22 +372,24 @@ export default function App() {
           }
         }
 
-        const purchasesRes = await request(`/api/v1/condominiums/${activeEdificioId}/purchase-requests`);
-        if (!purchasesRes.ok) {
-          const payload = await purchasesRes.json().catch(() => null);
-          setPurchasesError(payload?.error || 'Erro ao carregar requisições de compra.');
-          setPurchases([]);
-        } else {
-          setPurchases(await purchasesRes.json());
-        }
+        if (!isResident) {
+          const purchasesRes = await request(`/api/v1/condominiums/${activeEdificioId}/purchase-requests`);
+          if (!purchasesRes.ok) {
+            const payload = await purchasesRes.json().catch(() => null);
+            setPurchasesError(payload?.error || 'Erro ao carregar requisições de compra.');
+            setPurchases([]);
+          } else {
+            setPurchases(await purchasesRes.json());
+          }
 
-        const paymentsRes = await request(`/api/v1/condominiums/${activeEdificioId}/payment-orders`);
-        if (!paymentsRes.ok) {
-          const payload = await paymentsRes.json().catch(() => null);
-          setPaymentsError(payload?.error || 'Erro ao carregar ordens de pagamento.');
-          setPayments([]);
-        } else {
-          setPayments(await paymentsRes.json());
+          const paymentsRes = await request(`/api/v1/condominiums/${activeEdificioId}/payment-orders`);
+          if (!paymentsRes.ok) {
+            const payload = await paymentsRes.json().catch(() => null);
+            setPaymentsError(payload?.error || 'Erro ao carregar ordens de pagamento.');
+            setPayments([]);
+          } else {
+            setPayments(await paymentsRes.json());
+          }
         }
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -377,7 +403,7 @@ export default function App() {
     };
     loadData();
     return () => controller.abort();
-  }, [activeEdificioId, user]);
+  }, [activeEdificioId, user, activeMembership?.accountId, isResident]);
 
   // Trigger brief alert notifications
   const triggerNotification = (message: string, type: 'success' | 'info' = 'success') => {
@@ -1047,17 +1073,19 @@ export default function App() {
         enrichedUser = {
           ...matchedPreset,
           accountId: data.user.memberships?.[0]?.accountId,
-          memberships: data.user.memberships
+          memberships: data.user.memberships,
+          isSystemAdmin: data.user.isSystemAdmin,
         };
       } else {
         enrichedUser = {
           name: data.user.name,
           email: data.user.email,
-          role: data.user.memberships[0]?.role === 'syndic' ? 'admin' : data.user.memberships[0]?.role === 'manager' ? 'staff' : 'resident',
+          role: uiRoleFor(data.user.memberships[0]?.role),
           avatar: data.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
           description: data.user.memberships[0]?.role || 'Morador',
           accountId: data.user.memberships?.[0]?.accountId,
-          memberships: data.user.memberships
+          memberships: data.user.memberships,
+          isSystemAdmin: data.user.isSystemAdmin,
         };
       }
 
@@ -1086,7 +1114,8 @@ export default function App() {
       const enrichedUser = {
         ...selectedUser,
         accountId: data.user.memberships?.[0]?.accountId,
-        memberships: data.user.memberships
+        memberships: data.user.memberships,
+        isSystemAdmin: data.user.isSystemAdmin,
       };
       setUser(enrichedUser);
       localStorage.setItem('gcv_logged_user', JSON.stringify(enrichedUser));
@@ -1151,17 +1180,19 @@ export default function App() {
           enrichedUser = {
             ...matchedPreset,
             accountId: loggedUser.memberships?.[0]?.accountId,
-            memberships: loggedUser.memberships
+            memberships: loggedUser.memberships,
+            isSystemAdmin: loggedUser.isSystemAdmin,
           };
         } else {
           enrichedUser = {
             name: loggedUser.name,
             email: loggedUser.email,
-            role: loggedUser.memberships[0]?.role === 'syndic' ? 'admin' : loggedUser.memberships[0]?.role === 'manager' ? 'staff' : 'resident',
+            role: uiRoleFor(loggedUser.memberships[0]?.role),
             avatar: loggedUser.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
             description: loggedUser.memberships[0]?.role || 'Morador',
             accountId: loggedUser.memberships?.[0]?.accountId,
-            memberships: loggedUser.memberships
+            memberships: loggedUser.memberships,
+            isSystemAdmin: loggedUser.isSystemAdmin,
           };
         }
 
@@ -1233,6 +1264,11 @@ export default function App() {
         : 'text-zinc-400 hover:bg-white/5 opacity-80 hover:opacity-100'
     }`;
   };
+  const invitationToken = window.location.pathname.match(/^\/invite\/([^/]+)$/)?.[1];
+  if (invitationToken) {
+    return <InvitationAcceptance token={decodeURIComponent(invitationToken)} />;
+  }
+
   if (!user) {
     const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
@@ -1441,9 +1477,6 @@ export default function App() {
                       {ed.name}
                     </option>
                   ))}
-                  <option value="__new__" className="bg-[#0F1115] text-[#10b981] font-bold">
-                    + Novo Edifício
-                  </option>
                 </select>
                 <span className="text-[8px] text-zinc-400 font-semibold tracking-wider uppercase block mt-0.5">Módulo Ativo</span>
               </div>
@@ -1470,7 +1503,7 @@ export default function App() {
         {/* Mobile menu panel overlay */}
         {mobileMenuOpen && (
           <div className="bg-[#14161A] border-t border-slate-800/60 font-semibold px-4 pt-2 pb-4 space-y-2 text-xs max-h-[80vh] overflow-y-auto">
-            {user.role === 'resident' ? (
+            {isResident ? (
               <>
                 <button onClick={() => { setActiveTab('dashboard'); setMobileMenuOpen(false); }} className={navBtnStyle('dashboard')}>Portal do Morador</button>
                 <button onClick={() => { setActiveTab('ia_assistant'); setMobileMenuOpen(false); }} className={navBtnStyle('ia_assistant')}>Assistente IA Copilot ✨</button>
@@ -1487,7 +1520,7 @@ export default function App() {
                 <button onClick={() => { setActiveTab('ordens'); setMobileMenuOpen(false); }} className={navBtnStyle('ordens')}>Ordens de Serviço ({maintenanceRequests.length})</button>
                 <button onClick={() => { setActiveTab('logs'); setMobileMenuOpen(false); }} className={navBtnStyle('logs')}>Logs de Operação</button>
                 
-                {user.role === 'admin' && (
+                {canAdminister && (
                   <>
                     <button onClick={() => { setActiveTab('cobrancas'); setMobileMenuOpen(false); }} className={navBtnStyle('cobrancas')}>Cobranças</button>
                     <button onClick={() => { setActiveTab('pagamentos'); setMobileMenuOpen(false); }} className={navBtnStyle('pagamentos')}>Contas a Pagar</button>
@@ -1499,6 +1532,11 @@ export default function App() {
                 )}
                 <button onClick={() => { setActiveTab('notificacoes'); setMobileMenuOpen(false); }} className={navBtnStyle('notificacoes')}>Avisos & Mural</button>
               </>
+            )}
+            {user.isSystemAdmin && (
+              <button onClick={() => { setActiveTab('onboarding'); setMobileMenuOpen(false); }} className={navBtnStyle('onboarding')}>
+                Administração da Plataforma
+              </button>
             )}
             <button
               onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
@@ -1545,9 +1583,6 @@ export default function App() {
                       {ed.name}
                     </option>
                   ))}
-                  <option value="__new__" className="bg-[#0F1115] text-[#10b981] font-bold">
-                    + Cadastrar Edifício
-                  </option>
                 </select>
                 <p className="text-[9px] text-zinc-500 font-semibold truncate leading-tight mt-0.5">
                   {activeEdificio?.address || 'Sem endereço'}
@@ -1560,12 +1595,12 @@ export default function App() {
         {/* Sidebar grouped navigational menu */}
         <div className="flex-1 px-4 space-y-4 pb-6 select-none text-[10px] font-bold text-zinc-500 tracking-wider">
           
-          {user.role === 'resident' ? (
+          {isResident ? (
             /* RESTRICTED MORADOR SIDEBAR */
             <div className="space-y-1">
               <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">PORTAL DO MORADOR</span>
                 <button data-testid="nav-dashboard" onClick={() => setActiveTab('dashboard')} className={navBtnStyle('dashboard')}>
-                  <Building className="w-3.5 h-3.5" /> Meu Painel (A-101)
+                  <Building className="w-3.5 h-3.5" /> Meu Painel
                 </button>
                 <button data-testid="nav-ia_assistant" onClick={() => setActiveTab('ia_assistant')} className={navBtnStyle('ia_assistant')}>
                   <Sparkles className="w-3.5 h-3.5 text-[#10b981]" /> Assistente IA ✨
@@ -1631,7 +1666,7 @@ export default function App() {
               </div>
 
               {/* Group 4: FINANCEIRO (Hidden for staff) */}
-              {user.role === 'admin' && (
+              {canAdminister && (
                 <div className="space-y-1">
                   <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">FINANCEIRO</span>
                   <button data-testid="nav-cobrancas" onClick={() => setActiveTab('cobrancas')} className={navBtnStyle('cobrancas')}>
@@ -1649,7 +1684,7 @@ export default function App() {
               {/* Group 5: CONDOMÍNIO */}
               <div className="space-y-1">
                 <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">CONDOMÍNIO</span>
-                {user.role === 'admin' && (
+                {canAdminister && (
                   <button data-testid="nav-condominos" onClick={() => setActiveTab('condominos')} className={navBtnStyle('condominos')}>
                     <Users className="w-3.5 h-3.5" /> Fichas Moradores
                   </button>
@@ -1660,12 +1695,12 @@ export default function App() {
                 <button data-testid="nav-notificacoes" onClick={() => setActiveTab('notificacoes')} className={navBtnStyle('notificacoes')}>
                   <Bell className="w-3.5 h-3.5" /> Mural de Avisos
                 </button>
-                {user.role === 'admin' && (
+                {canAdminister && (
                   <button data-testid="nav-usuarios" onClick={() => setActiveTab('usuarios')} className={navBtnStyle('usuarios')}>
                     <Users className="w-3.5 h-3.5" /> Corpo Diretivo / Staff
                   </button>
                 )}
-                {user.role !== 'resident' && (
+                {!isResident && (
                   <button data-testid="nav-carga-dados" onClick={() => setActiveTab('carga_dados')} className={navBtnStyle('carga_dados')}>
                     <Database className="w-3.5 h-3.5" /> Carga de Dados
                   </button>
@@ -1673,11 +1708,19 @@ export default function App() {
               </div>
 
               {/* Group 6: SISTEMA */}
-              {user.role === 'admin' && (
+              {canAdminister && (
                 <div className="space-y-1">
                   <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">INTEGRAÇÕES</span>
                   <button data-testid="nav-github" onClick={() => setActiveTab('github')} className={navBtnStyle('github')}>
                     <Github className="w-3.5 h-3.5" /> Conexão GitHub
+                  </button>
+                </div>
+              )}
+              {user.isSystemAdmin && (
+                <div className="space-y-1">
+                  <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">PLATAFORMA</span>
+                  <button data-testid="nav-onboarding" onClick={() => setActiveTab('onboarding')} className={navBtnStyle('onboarding')}>
+                    <ShieldCheck className="w-3.5 h-3.5" /> Onboarding
                   </button>
                 </div>
               )}
@@ -1718,7 +1761,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-h-0 w-full overflow-y-auto h-screen">
         <main data-testid="dashboard-main" className="flex-1 px-4 sm:px-8 lg:px-10 py-10 w-full">
           {activeTab === 'dashboard' && (
-            user.role === 'resident' ? (
+            isResident ? (
               <div className="space-y-6 text-left">
                 <div className="bg-[#14161A] border border-[#10b981]/20 p-6 rounded-2xl relative overflow-hidden">
                   <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 text-emerald-500/5 select-none pointer-events-none">
@@ -1729,7 +1772,8 @@ export default function App() {
                       <span className="bg-[#10b981]/15 text-[#10b981] text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded">Portal do Condômino</span>
                       <h1 className="text-2xl font-bold tracking-tight text-white mt-1.5">Olá, {user.name}</h1>
                       <p className="text-zinc-400 text-xs mt-1">
-                        Bem-vindo à sua área residencial privativa. Unidade ativa: <strong className="text-white">Apartamento A-101</strong> (Fração Ideal: 1.25%).
+                        Bem-vindo à sua área residencial privativa. Unidade ativa: <strong className="text-white">{residentUnit ? `${residentUnit.block} / ${residentUnit.number}` : 'vínculo não identificado'}</strong>
+                        {residentUnit ? ` (Fração ideal: ${(residentUnit.fractionalShare * 100).toFixed(4)}%).` : '.'}
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -1751,11 +1795,11 @@ export default function App() {
                       <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
                         <Receipt className="w-4 h-4 text-[#10b981]" /> Minhas Cobranças
                       </h3>
-                      <span className="text-[10px] text-[#10b981] font-semibold font-mono">Unidade A-101</span>
+                      <span className="text-[10px] text-[#10b981] font-semibold font-mono">{residentUnit ? `Unidade ${residentUnit.number}` : 'Sem unidade'}</span>
                     </div>
 
                     <div className="space-y-2.5">
-                      {billings.filter(b => b.unitId === 'A-101').map((bill) => (
+                      {billings.filter(b => b.unitId === residentUnit?.id).map((bill) => (
                         <div key={bill.id} className="bg-zinc-950/40 border border-zinc-855 p-4 rounded-xl flex items-center justify-between gap-4">
                           <div className="text-left">
                             <p className="text-xs font-bold text-white">{bill.description}</p>
@@ -1788,7 +1832,7 @@ export default function App() {
                           </div>
                         </div>
                       ))}
-                      {billings.filter(b => b.unitId === 'A-101').length === 0 && (
+                      {billings.filter(b => b.unitId === residentUnit?.id).length === 0 && (
                         <p className="text-xs text-zinc-500 py-4 text-center">Nenhuma cobrança registrada para a unidade.</p>
                       )}
                     </div>
@@ -1804,7 +1848,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-2.5 max-h-[220px] overflow-y-auto">
-                      {maintenanceRequests.filter(r => r.unitId === 'A-101').map((req) => (
+                      {maintenanceRequests.filter(r => r.unitId === residentUnit?.id).map((req) => (
                         <div key={req.id} className="bg-zinc-950/40 border border-zinc-850 p-3 rounded-lg flex items-center justify-between">
                           <div className="text-left">
                             <p className="text-xs font-bold text-white leading-normal">{req.title}</p>
@@ -1820,7 +1864,7 @@ export default function App() {
                         </div>
                       ))}
 
-                      {maintenanceRequests.filter(r => r.unitId === 'A-101').length === 0 && (
+                      {maintenanceRequests.filter(r => r.unitId === residentUnit?.id).length === 0 && (
                         <p className="text-xs text-zinc-500 py-4 text-center leading-normal">Você ainda não possui chamados de manutenção abertos.</p>
                       )}
 
@@ -1896,6 +1940,10 @@ export default function App() {
             <DataImports condoId={activeEdificioId} />
           )}
 
+          {activeTab === 'onboarding' && user.isSystemAdmin && (
+            <SystemOnboarding />
+          )}
+
           {activeTab === 'bim' && (
             <BimViewer 
               equipments={equipments}
@@ -1948,7 +1996,7 @@ export default function App() {
           )}
 
           {activeTab === 'notificacoes' && (
-            <Notifications condoId={activeEdificioId} />
+            <Notifications condoId={activeEdificioId} canManage={!isResident} />
           )}
 
           {activeTab === 'usuarios' && (

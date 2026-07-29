@@ -30,7 +30,7 @@ const massGenerateSchema = z.object({
 router.get('/:condoId/charges', requireAuth, tenantGuard, async (req: any, res) => {
   const { condoId } = req.params;
   try {
-    const isStaff = req.user.memberships.some((m: any) =>
+    const isStaff = req.authorizationContext.memberships.some((m: any) =>
       [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.accountant, PlatformRole.council_member].includes(m.role)
     );
 
@@ -51,7 +51,8 @@ router.get('/:condoId/charges', requireAuth, tenantGuard, async (req: any, res) 
     // Residents see only their unit's charges
     const userRelationships = await prisma.unitRelationship.findMany({
       where: {
-        person: { email: req.user.email },
+        endDate: null,
+        person: { user: { id: req.user.id } },
         unit: { building: { condominiumId: condoId } },
       },
       select: { unitId: true },
@@ -61,6 +62,7 @@ router.get('/:condoId/charges', requireAuth, tenantGuard, async (req: any, res) 
     const charges = await prisma.charge.findMany({
       where: {
         unitId: { in: unitIds },
+        billingPeriod: { condominiumId: condoId },
       },
       include: {
         unit: { include: { building: true } },

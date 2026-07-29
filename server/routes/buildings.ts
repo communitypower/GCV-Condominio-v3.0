@@ -32,16 +32,27 @@ router.post(
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
   validateBody(createBuildingSchema),
-  async (req, res) => {
+  async (req: any, res) => {
     const { condoId } = req.params;
     const { name } = req.body;
 
     try {
-      const building = await prisma.building.create({
-        data: {
-          name,
-          condominiumId: condoId,
-        },
+      const building = await prisma.$transaction(async (tx) => {
+        const created = await tx.building.create({ data: { name, condominiumId: condoId } });
+        await tx.auditEvent.create({
+          data: {
+            accountId: req.authorizationContext.accountId,
+            condominiumId: condoId,
+            userId: req.user.id,
+            userEmail: req.user.email,
+            action: 'create',
+            entity: 'Building',
+            entityId: created.id,
+            details: `Bloco ${created.name} criado.`,
+            ipAddress: req.ip,
+          },
+        });
+        return created;
       });
       res.status(201).json(building);
     } catch (error) {

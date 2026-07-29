@@ -48,6 +48,7 @@ function hasScopedStaffRole(req: any) {
 async function residentUnitIds(userId: string, condominiumId: string) {
   const relationships = await prisma.unitRelationship.findMany({
     where: {
+      endDate: null,
       person: { user: { id: userId } },
       unit: { building: { condominiumId } },
     },
@@ -114,7 +115,7 @@ router.post('/:condoId/tickets', requireAuth, tenantGuard, validateBody(createTi
       const isStaff = hasScopedStaffRole(req);
       if (!isStaff) {
         const belongsToUnit = await prisma.unitRelationship.findFirst({
-          where: { unitId, person: { user: { id: req.user.id } } },
+          where: { unitId, endDate: null, person: { user: { id: req.user.id } } },
         });
         if (!belongsToUnit) {
           return res.status(403).json({ error: "Você não possui permissão para registrar chamado nesta unidade." });

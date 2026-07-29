@@ -13,6 +13,7 @@ async function main() {
   console.log("Seeding started...");
 
   // Clean database
+  await prisma.invitation.deleteMany();
   await prisma.auditEvent.deleteMany();
   await prisma.documentVersion.deleteMany();
   await prisma.document.deleteMany();
@@ -32,6 +33,22 @@ async function main() {
   await prisma.user.deleteMany();
   await prisma.person.deleteMany();
   await prisma.account.deleteMany();
+
+  const systemAdminPerson = await prisma.person.create({
+    data: {
+      name: "Administrador do Sistema GCV",
+      email: "system.admin@gcv.com.br",
+      phone: "",
+    },
+  });
+  await prisma.user.create({
+    data: {
+      email: systemAdminPerson.email,
+      passwordHash: bcrypt.hashSync("system-admin-local-123", 12),
+      personId: systemAdminPerson.id,
+      isSystemAdmin: true,
+    },
+  });
 
   // 1. Create Default Account
   const account = await prisma.account.create({

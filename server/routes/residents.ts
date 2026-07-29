@@ -3,6 +3,8 @@ import { PrismaClient, PlatformRole, RelationshipRole } from '@prisma/client';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
 import { z } from 'zod';
+import { createInvitation } from '../services/invitations';
+import { isDomainError } from '../services/domain-errors';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -31,6 +33,7 @@ router.get('/:condoId/team', requireAuth, tenantGuard, requireRole([PlatformRole
     const memberships = await prisma.membership.findMany({
       where: {
         accountId,
+        status: 'active',
         role: { in: staffRoles },
         OR: [{ condominiumId: req.params.condoId }, { condominiumId: null }],
       },
@@ -61,6 +64,7 @@ router.get('/:condoId/residents', requireAuth, tenantGuard, async (req: any, res
     const relationships = await prisma.unitRelationship.findMany({
       where: {
         unit: { building: { condominiumId: condoId } },
+        endDate: null,
         ...(isStaff ? {} : { person: { user: { id: req.user.id } } }),
       },
       include: {
@@ -82,81 +86,31 @@ router.post(
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
   validateBody(createResidentSchema),
-  async (req, res) => {
+  async (req: any, res) => {
     const { condoId } = req.params;
     const { name, email, phone, unitId, role } = req.body;
 
     try {
-      const normalizedEmail = email.toLowerCase();
-      const relationship = await prisma.$transaction(async (tx) => {
-        const unit = await tx.unit.findFirst({
-          where: { id: unitId, building: { condominiumId: condoId } },
-          include: { building: { select: { condominium: { select: { accountId: true } } } } },
-        });
-        if (!unit) throw new Error('UNIT_NOT_IN_CONDOMINIUM');
-
-        const existingPerson = await tx.person.findFirst({
-          where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
-        });
-        const person = existingPerson
-          ? await tx.person.update({ where: { id: existingPerson.id }, data: { name, phone } })
-          : await tx.person.create({ data: { name, email: normalizedEmail, phone } });
-        const existingUser = await tx.user.findFirst({
-          where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
-        });
-        if (existingUser?.personId && existingUser.personId !== person.id) {
-          throw new Error('USER_PERSON_CONFLICT');
-        }
-        const user = existingUser
-          ? await tx.user.update({ where: { id: existingUser.id }, data: { personId: person.id } })
-          : await tx.user.create({
-              data: { email: normalizedEmail, passwordHash: null, personId: person.id },
-            });
-
-        await tx.membership.upsert({
-          where: {
-            userId_accountId_condominiumId_role: {
-              userId: user.id,
-              accountId: unit.building.condominium.accountId,
-              condominiumId: condoId,
-              role: PlatformRole.resident,
-            },
-          },
-          create: {
-            userId: user.id,
-            accountId: unit.building.condominium.accountId,
-            condominiumId: condoId,
-            role: PlatformRole.resident,
-          },
-          update: {},
-        });
-
-        const existingRelationship = await tx.unitRelationship.findFirst({
-          where: { unitId, personId: person.id, role: role as RelationshipRole },
-        });
-        if (existingRelationship) {
-          return tx.unitRelationship.update({
-            where: { id: existingRelationship.id },
-            data: { endDate: null },
-            include: { person: true, unit: true },
-          });
-        }
-        return tx.unitRelationship.create({
-          data: { unitId, personId: person.id, role: role as RelationshipRole },
-          include: { person: true, unit: true },
-        });
+      const result = await createInvitation(prisma, {
+        accountId: req.authorizationContext.accountId,
+        condominiumId: condoId,
+        unitId,
+        email,
+        name,
+        phone,
+        role: PlatformRole.resident,
+        relationshipRole: role as RelationshipRole,
+        invitedById: req.user.id,
+        invitedByEmail: req.user.email,
+        ipAddress: req.ip,
       });
-
-      res.status(201).json(relationship);
+      res.status(202).json(result);
     } catch (error) {
-      if (error instanceof Error && error.message === 'UNIT_NOT_IN_CONDOMINIUM') {
-        return res.status(400).json({ error: "Unidade não encontrada neste condomínio." });
-      }
-      if (error instanceof Error && error.message === 'USER_PERSON_CONFLICT') {
-        return res.status(409).json({ error: "E-mail já vinculado a outra pessoa." });
+      if (isDomainError(error)) {
+        return res.status(error.status).json({ error: error.message, code: error.code });
       }
       console.error("Create Resident Error:", error);
-      res.status(500).json({ error: "Erro ao cadastrar morador." });
+      res.status(500).json({ error: "Erro ao convidar morador." });
     }
   }
 );

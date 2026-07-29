@@ -8,6 +8,7 @@ const router = Router();
 const prisma = new PrismaClient();
 const manageRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager];
 const decideRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.council_member];
+const readRoles = [...decideRoles, PlatformRole.accountant];
 
 const createSchema = z.object({
   title: z.string().trim().min(1).max(160),
@@ -34,7 +35,7 @@ async function getCondominium(condominiumId: string) {
   return prisma.condominium.findUnique({ where: { id: condominiumId }, select: { accountId: true } });
 }
 
-router.get('/:condoId/purchase-requests', requireAuth, tenantGuard, async (req, res) => {
+router.get('/:condoId/purchase-requests', requireAuth, tenantGuard, requireRole(readRoles), async (req, res) => {
   try {
     const records = await prisma.purchaseRequest.findMany({
       where: { condominiumId: req.params.condoId },

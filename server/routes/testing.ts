@@ -6,7 +6,9 @@ const prisma = new PrismaClient();
 const TEST_PREFIX = 'TEST_E2E_';
 
 function testingEnabled() {
-  return process.env.ENABLE_E2E_TESTING === 'true' && Boolean(process.env.E2E_TEST_SECRET);
+  return process.env.NODE_ENV !== 'production'
+    && process.env.ENABLE_E2E_TESTING === 'true'
+    && Boolean(process.env.E2E_TEST_SECRET);
 }
 
 function isProductionLike() {
@@ -65,10 +67,23 @@ router.post('/session', async (req, res) => {
 router.post('/cleanup', async (req, res) => {
   if (!assertTestingAccess(req, res)) return;
 
+  const condominiumId = String(req.body?.condominiumId || '').trim();
+  if (!condominiumId) {
+    return res.status(400).json({ error: 'condominiumId is required for tenant-safe cleanup.' });
+  }
+  const condominium = await prisma.condominium.findUnique({
+    where: { id: condominiumId },
+    select: { id: true },
+  });
+  if (!condominium) {
+    return res.status(404).json({ error: 'Condominium not found.' });
+  }
+
   const results: Record<string, number> = {};
 
   const tickets = await prisma.maintenanceTicket.findMany({
     where: {
+      condominiumId,
       OR: [
         { title: { startsWith: TEST_PREFIX } },
         { description: { startsWith: TEST_PREFIX } },
@@ -84,6 +99,7 @@ router.post('/cleanup', async (req, res) => {
 
   const documents = await prisma.document.findMany({
     where: {
+      condominiumId,
       OR: [
         { title: { startsWith: TEST_PREFIX } },
         { filePath: { startsWith: TEST_PREFIX } },
@@ -97,6 +113,7 @@ router.post('/cleanup', async (req, res) => {
 
   const charges = await prisma.charge.findMany({
     where: {
+      billingPeriod: { condominiumId },
       OR: [
         { description: { startsWith: TEST_PREFIX } },
         { billingPeriod: { monthString: { startsWith: '2099-' } } },
@@ -109,6 +126,7 @@ router.post('/cleanup', async (req, res) => {
   results.charges = (await prisma.charge.deleteMany({ where: { id: { in: chargeIds } } })).count;
   results.billingPeriods = (await prisma.billingPeriod.deleteMany({
     where: {
+      condominiumId,
       monthString: { startsWith: '2099-' },
       charges: { none: {} },
     },
@@ -116,6 +134,7 @@ router.post('/cleanup', async (req, res) => {
 
   results.maintenancePlans = (await prisma.maintenancePlan.deleteMany({
     where: {
+      condominiumId,
       OR: [
         { title: { startsWith: TEST_PREFIX } },
         { description: { startsWith: TEST_PREFIX } },
@@ -125,6 +144,7 @@ router.post('/cleanup', async (req, res) => {
 
   results.equipment = (await prisma.equipment.deleteMany({
     where: {
+      condominiumId,
       OR: [
         { name: { startsWith: TEST_PREFIX } },
         { location: { startsWith: TEST_PREFIX } },
@@ -133,8 +153,41 @@ router.post('/cleanup', async (req, res) => {
     },
   })).count;
 
+  results.purchaseRequests = (await prisma.purchaseRequest.deleteMany({
+    where: {
+      condominiumId,
+      OR: [
+        { title: { startsWith: TEST_PREFIX } },
+        { supplier: { startsWith: TEST_PREFIX } },
+        { items: { startsWith: TEST_PREFIX } },
+      ],
+    },
+  })).count;
+
+  results.paymentOrders = (await prisma.paymentOrder.deleteMany({
+    where: {
+      condominiumId,
+      OR: [
+        { recipient: { startsWith: TEST_PREFIX } },
+        { description: { startsWith: TEST_PREFIX } },
+        { paymentReference: { startsWith: TEST_PREFIX } },
+      ],
+    },
+  })).count;
+
+  results.announcements = (await prisma.announcement.deleteMany({
+    where: {
+      condominiumId,
+      OR: [
+        { title: { startsWith: TEST_PREFIX } },
+        { body: { startsWith: TEST_PREFIX } },
+      ],
+    },
+  })).count;
+
   const units = await prisma.unit.findMany({
     where: {
+      building: { condominiumId },
       OR: [
         { number: { startsWith: TEST_PREFIX } },
         { building: { name: { startsWith: TEST_PREFIX } } },
@@ -146,13 +199,36 @@ router.post('/cleanup', async (req, res) => {
   results.unitRelationships = (await prisma.unitRelationship.deleteMany({ where: { unitId: { in: unitIds } } })).count;
   results.units = (await prisma.unit.deleteMany({ where: { id: { in: unitIds } } })).count;
 
-  results.users = (await prisma.user.deleteMany({ where: { email: { startsWith: 'test_e2e_' } } })).count;
-  results.people = (await prisma.person.deleteMany({ where: { email: { startsWith: 'test_e2e_' } } })).count;
+  const testUsers = await prisma.user.findMany({
+    where: {
+      email: { startsWith: 'test_e2e_' },
+      memberships: { some: { condominiumId } },
+    },
+    select: { id: true, personId: true },
+  });
+  const testUserIds = testUsers.map((user) => user.id);
+  const testPersonIds = testUsers.flatMap((user) => user.personId ? [user.personId] : []);
+  results.memberships = (await prisma.membership.deleteMany({
+    where: { userId: { in: testUserIds }, condominiumId },
+  })).count;
+  results.users = (await prisma.user.deleteMany({
+    where: { id: { in: testUserIds }, memberships: { none: {} } },
+  })).count;
+  results.people = (await prisma.person.deleteMany({
+    where: {
+      id: { in: testPersonIds },
+      user: null,
+      relationships: { none: {} },
+    },
+  })).count;
 
-  results.buildings = (await prisma.building.deleteMany({ where: { name: { startsWith: TEST_PREFIX } } })).count;
+  results.buildings = (await prisma.building.deleteMany({
+    where: { condominiumId, name: { startsWith: TEST_PREFIX } },
+  })).count;
 
   results.auditEvents = (await prisma.auditEvent.deleteMany({
     where: {
+      condominiumId,
       OR: [
         { details: { contains: TEST_PREFIX } },
         { entityId: { in: [...ticketIds, ...chargeIds, ...documentIds, ...unitIds] } },
@@ -160,7 +236,7 @@ router.post('/cleanup', async (req, res) => {
     },
   })).count;
 
-  res.json({ prefix: TEST_PREFIX, results });
+  res.json({ prefix: TEST_PREFIX, condominiumId, results });
 });
 
 export default router;

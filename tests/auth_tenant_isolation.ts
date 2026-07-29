@@ -3,6 +3,7 @@ import {
   MaintenanceCategory,
   MaintenancePriority,
   MaintenanceStatus,
+  MembershipStatus,
   PlatformRole,
   PrismaClient,
   RelationshipRole,
@@ -162,6 +163,7 @@ async function runTests() {
 
     const ownRelationships = await prisma.unitRelationship.findMany({
       where: {
+        endDate: null,
         person: { user: { email: 'carlos.ramos@email.com' } },
         unit: { building: { condominiumId: condoId } },
       },
@@ -178,6 +180,27 @@ async function runTests() {
     assert.ok(
       visibleRelationships.every((relationship) => relationship.person.email === 'carlos.ramos@email.com'),
       'Resident must only receive their own PII and relationships'
+    );
+
+    const residentUnitsRes = await fetch(`${BASE_URL}/condominiums/${condoId}/units`, {
+      headers: { Cookie: resCookie },
+    });
+    assert.strictEqual(residentUnitsRes.status, 200);
+    const residentUnits = (await residentUnitsRes.json()) as any[];
+    const ownUnitIds = new Set(ownRelationships.map((relationship) => relationship.unitId));
+    assert.ok(residentUnits.length > 0, 'Resident should receive their active units');
+    assert.ok(
+      residentUnits.every((unit) => ownUnitIds.has(unit.id)),
+      'Resident units endpoint must not return units belonging to other residents'
+    );
+    assert.ok(
+      residentUnits.every((unit) =>
+        unit.relationships.length > 0 &&
+        unit.relationships.every((relationship: any) =>
+          relationship.person.email === 'carlos.ramos@email.com'
+        )
+      ),
+      'Resident units endpoint must not expose another resident PII'
     );
 
     const otherUnit = await prisma.unit.findFirst({
@@ -230,16 +253,14 @@ async function runTests() {
       email: testResidentEmail,
       phone: '11999999999',
       unitId: testUnit.id,
-      role: RelationshipRole.tenant,
+      role: RelationshipRole.owner,
     };
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const createResidentRes = await fetch(`${BASE_URL}/condominiums/${condoId}/residents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookie },
-        body: JSON.stringify(residentPayload),
-      });
-      assert.strictEqual(createResidentRes.status, 201, 'Repeated resident creation should be idempotent');
-    }
+    const createResidentRes = await fetch(`${BASE_URL}/condominiums/${condoId}/residents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify(residentPayload),
+    });
+    assert.strictEqual(createResidentRes.status, 202, 'Resident invitation should be accepted for delivery');
     const testResident = await prisma.user.findUnique({
       where: { email: testResidentEmail },
       include: { person: { include: { relationships: true } }, memberships: true },
@@ -248,9 +269,137 @@ async function runTests() {
     testResidentUserId = testResident!.id;
     testResidentPersonId = testResident!.person!.id;
     assert.strictEqual(testResident!.passwordHash, null, 'Invited resident must not receive a shared password');
-    assert.strictEqual(testResident!.person!.relationships.length, 1, 'Repeated creation must not duplicate relationship');
-    assert.strictEqual(testResident!.memberships.length, 1, 'Repeated creation must not duplicate membership');
-    console.log('✔ Resident provisioning is transactional, idempotent, and passwordless');
+    assert.strictEqual(testResident!.person!.relationships.length, 0, 'Pending invitation must not grant unit access');
+    assert.strictEqual(testResident!.memberships.length, 1, 'Invitation must create a single pending membership');
+    assert.strictEqual(testResident!.memberships[0].status, MembershipStatus.pending);
+    await prisma.$transaction([
+      prisma.membership.update({
+        where: { id: testResident!.memberships[0].id },
+        data: { status: MembershipStatus.active, activatedAt: new Date() },
+      }),
+      prisma.unitRelationship.create({
+        data: {
+          personId: testResidentPersonId,
+          unitId: testUnit.id,
+          role: RelationshipRole.owner,
+        },
+      }),
+    ]);
+    console.log('✔ Resident invitation is transactional, pending, and passwordless');
+
+    const sharedIdentityPatchRes = await fetch(
+      `${BASE_URL}/condominiums/${condoId}/units/${testUnit.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          status: UnitStatus.vacant,
+          ownerName: 'Mutated Shared Identity',
+        }),
+      }
+    );
+    assert.strictEqual(
+      sharedIdentityPatchRes.status,
+      409,
+      'Unit editing must reject mutation of an identity linked to an application user'
+    );
+    const unchangedUnit = await prisma.unit.findUnique({ where: { id: testUnit.id } });
+    const unchangedPerson = await prisma.person.findUnique({ where: { id: testResidentPersonId } });
+    assert.strictEqual(unchangedUnit?.status, UnitStatus.occupied, 'Rejected owner update must roll back unit changes');
+    assert.strictEqual(unchangedPerson?.name, residentPayload.name, 'Rejected owner update must preserve global identity');
+
+    await prisma.membership.create({
+      data: {
+        userId: testResidentUserId,
+        accountId: foreignAccount.id,
+        condominiumId: foreignCondo.id,
+        role: PlatformRole.admin,
+      },
+    });
+    const dualRoleLogin = await fetch(`${BASE_URL}/auth/mock-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: testResidentEmail }),
+    });
+    assert.strictEqual(dualRoleLogin.status, 200);
+    const dualRoleCookie = dualRoleLogin.headers.get('set-cookie')!;
+
+    const dualRoleUnitsRes = await fetch(`${BASE_URL}/condominiums/${condoId}/units`, {
+      headers: { Cookie: dualRoleCookie },
+    });
+    assert.strictEqual(dualRoleUnitsRes.status, 200);
+    const dualRoleUnits = (await dualRoleUnitsRes.json()) as any[];
+    assert.deepStrictEqual(
+      dualRoleUnits.map((unit) => unit.id),
+      [testUnit.id],
+      'Admin role in another tenant must not grant management visibility in this condominium'
+    );
+    assert.ok(
+      dualRoleUnits[0].relationships.every(
+        (relationship: any) => relationship.person.email === testResidentEmail
+      ),
+      'Cross-tenant role must not expose other residents PII'
+    );
+
+    const procurementRes = await fetch(`${BASE_URL}/condominiums/${condoId}/purchase-requests`, {
+      headers: { Cookie: dualRoleCookie },
+    });
+    assert.strictEqual(procurementRes.status, 403, 'Procurement listing must be staff-only in the current tenant');
+
+    const scopedChargesRes = await fetch(`${BASE_URL}/condominiums/${condoId}/charges`, {
+      headers: { Cookie: dualRoleCookie },
+    });
+    assert.strictEqual(scopedChargesRes.status, 200);
+    const scopedCharges = (await scopedChargesRes.json()) as any[];
+    assert.ok(
+      scopedCharges.every((charge) => charge.unitId === testUnit.id),
+      'Foreign admin role must not expose condominium-wide charges'
+    );
+
+    const scopedDocumentsRes = await fetch(`${BASE_URL}/condominiums/${condoId}/documents`, {
+      headers: { Cookie: dualRoleCookie },
+    });
+    assert.strictEqual(scopedDocumentsRes.status, 200);
+    const scopedDocuments = (await scopedDocumentsRes.json()) as any[];
+    assert.ok(
+      scopedDocuments.every((document) =>
+        document.requiredRole === PlatformRole.resident &&
+        (document.unitId === null || document.unitId === testUnit.id)
+      ),
+      'Foreign admin role must not expose staff or other-unit documents'
+    );
+
+    await prisma.unitRelationship.updateMany({
+      where: { personId: testResidentPersonId, unitId: testUnit.id, endDate: null },
+      data: { endDate: new Date() },
+    });
+    const endedRelationshipUnitsRes = await fetch(`${BASE_URL}/condominiums/${condoId}/units`, {
+      headers: { Cookie: dualRoleCookie },
+    });
+    assert.strictEqual(endedRelationshipUnitsRes.status, 200);
+    assert.deepStrictEqual(
+      await endedRelationshipUnitsRes.json(),
+      [],
+      'Ended unit relationships must immediately revoke unit visibility'
+    );
+
+    const endedRelationshipTicketRes = await fetch(`${BASE_URL}/condominiums/${condoId}/tickets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: dualRoleCookie },
+      body: JSON.stringify({
+        title: 'Ended relationship ticket',
+        description: 'This request must be denied.',
+        category: MaintenanceCategory.other,
+        priority: MaintenancePriority.low,
+        unitId: testUnit.id,
+      }),
+    });
+    assert.strictEqual(
+      endedRelationshipTicketRes.status,
+      403,
+      'Ended unit relationships must not authorize maintenance requests'
+    );
+    console.log('✔ Scoped roles, active relationships, procurement ACL, and identity updates are isolated');
 
     // Test role restriction: Resident trying to create a building block
     console.log("Testing role restriction: resident trying to create a building block...");
@@ -354,6 +503,9 @@ async function runTests() {
     }
     if (testResidentPersonId) {
       await prisma.unitRelationship.deleteMany({ where: { personId: testResidentPersonId } });
+    }
+    if (testResidentEmail) {
+      await prisma.invitation.deleteMany({ where: { emailNormalized: testResidentEmail } });
     }
     if (testResidentUserId) {
       await prisma.membership.deleteMany({ where: { userId: testResidentUserId } });

@@ -38,7 +38,7 @@ export function resolveStoredDocumentPath(filePath: string) {
 router.get('/:condoId/documents', requireAuth, tenantGuard, async (req: any, res) => {
   const { condoId } = req.params;
   try {
-    const isStaff = req.user.memberships.some((m: any) =>
+    const isStaff = req.authorizationContext.memberships.some((m: any) =>
       [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.accountant, PlatformRole.council_member].includes(m.role)
     );
 
@@ -55,7 +55,8 @@ router.get('/:condoId/documents', requireAuth, tenantGuard, async (req: any, res
     // Residents see documents matching their role permission level and unitId scoping
     const userRelationships = await prisma.unitRelationship.findMany({
       where: {
-        person: { email: req.user.email },
+        endDate: null,
+        person: { user: { id: req.user.id } },
         unit: { building: { condominiumId: condoId } },
       },
       select: { unitId: true },
@@ -97,7 +98,7 @@ router.get('/:condoId/documents/:docId/download', requireAuth, tenantGuard, asyn
     }
 
     // Verify ACL access
-    const isStaff = req.user.memberships.some((m: any) =>
+    const isStaff = req.authorizationContext.memberships.some((m: any) =>
       [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.accountant, PlatformRole.council_member].includes(m.role)
     );
 
@@ -112,7 +113,9 @@ router.get('/:condoId/documents/:docId/download', requireAuth, tenantGuard, asyn
         const belongsToUnit = await prisma.unitRelationship.findFirst({
           where: {
             unitId: document.unitId,
-            person: { email: req.user.email },
+            endDate: null,
+            person: { user: { id: req.user.id } },
+            unit: { building: { condominiumId: condoId } },
           },
         });
         if (!belongsToUnit) {

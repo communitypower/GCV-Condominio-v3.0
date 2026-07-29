@@ -15,6 +15,8 @@ import { z } from 'zod';
 import path from 'path';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
+import { createInvitationInTransaction, finalizeInvitationDelivery, serializeInvitation } from '../services/invitations';
+import { isDomainError } from '../services/domain-errors';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -158,17 +160,7 @@ async function applyRecord(db: DbClient, condoId: string, entity: DataImportEnti
   }
 
   if (entity === DataImportEntity.residents) {
-    const unit = await resolveUnit(db, condoId, textValue(record, 'building'), textValue(record, 'unitNumber'));
-    if (!unit) throw new Error('Unidade não encontrada para o morador.');
-    const email = textValue(record, 'email').toLowerCase();
-    const person = await db.person.upsert({
-      where: { email },
-      update: { name: textValue(record, 'name'), phone: textValue(record, 'phone') },
-      create: { email, name: textValue(record, 'name'), phone: textValue(record, 'phone') },
-    });
-    const role = record.role as RelationshipRole;
-    const existing = await db.unitRelationship.findFirst({ where: { unitId: unit.id, personId: person.id, role, endDate: null } });
-    return existing || db.unitRelationship.create({ data: { unitId: unit.id, personId: person.id, role } });
+    throw new Error('Resident imports must use the invitation lifecycle.');
   }
 
   const building = textValue(record, 'building');
@@ -265,20 +257,63 @@ router.post('/:condoId/imports/:importId/apply', requireAuth, tenantGuard, requi
       return res.status(409).json({ error: 'O lote não possui payload disponível para aplicação.' });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const transactionResult = await prisma.$transaction(async (tx) => {
       const claim = await tx.dataImportJob.updateMany({
         where: { id: job.id, condominiumId: req.params.condoId, status: DataImportStatus.validated },
         data: { status: DataImportStatus.processing },
       });
       if (claim.count !== 1) throw new Error('IMPORT_ALREADY_CLAIMED');
 
+      const condominium = await tx.condominium.findUnique({
+        where: { id: req.params.condoId },
+        select: { accountId: true },
+      });
+      if (!condominium) throw new Error('Condomínio não encontrado.');
+
+      const pendingDeliveries: Array<{
+        invitation: Awaited<ReturnType<typeof createInvitationInTransaction>>['invitation'];
+        token: string;
+      }> = [];
+      let skipped = 0;
       for (let index = 0; index < records.length; index += 1) {
         failedRow = index + 2;
         failedReference = recordReference(job.entity, records[index]);
-        await applyRecord(tx, req.params.condoId, job.entity, records[index], req.user.email);
+        if (job.entity === DataImportEntity.residents) {
+          const record = records[index];
+          const unit = await resolveUnit(tx, req.params.condoId, textValue(record, 'building'), textValue(record, 'unitNumber'));
+          if (!unit) throw new Error('Unidade não encontrada para o morador.');
+          try {
+            const created = await createInvitationInTransaction(tx, {
+              accountId: condominium.accountId,
+              condominiumId: req.params.condoId,
+              unitId: unit.id,
+              email: textValue(record, 'email'),
+              name: textValue(record, 'name'),
+              phone: textValue(record, 'phone'),
+              role: PlatformRole.resident,
+              relationshipRole: record.role as RelationshipRole,
+              invitedById: req.user.id,
+              invitedByEmail: req.user.email,
+              ipAddress: req.ip,
+            });
+            pendingDeliveries.push({ invitation: created.invitation, token: created.token });
+          } catch (error) {
+            if (isDomainError(error) && error.code === 'MEMBERSHIP_ALREADY_ACTIVE') {
+              skipped += 1;
+              continue;
+            }
+            throw error;
+          }
+        } else {
+          await applyRecord(tx, req.params.condoId, job.entity, records[index], req.user.email);
+        }
       }
 
-      const completedResult = { processed: records.length, skipped: 0 };
+      const completedResult = {
+        processed: records.length - skipped,
+        skipped,
+        invitationsCreated: pendingDeliveries.length,
+      };
       await tx.dataImportJob.update({
         where: { id: job.id },
         data: {
@@ -294,6 +329,7 @@ router.post('/:condoId/imports/:importId/apply', requireAuth, tenantGuard, requi
         await tx.auditEvent.create({
           data: {
             accountId: condo.accountId,
+            condominiumId: req.params.condoId,
             userId: req.user.id,
             userEmail: req.user.email,
             action: 'create',
@@ -304,10 +340,21 @@ router.post('/:condoId/imports/:importId/apply', requireAuth, tenantGuard, requi
           },
         });
       }
-      return completedResult;
+      return { completedResult, pendingDeliveries };
     }, { timeout: 60_000 });
 
-    res.json({ id: job.id, status: DataImportStatus.completed, result });
+    const deliveries = await Promise.all(
+      transactionResult.pendingDeliveries.map(async ({ invitation, token }) => ({
+        invitation: serializeInvitation(invitation),
+        delivery: await finalizeInvitationDelivery(prisma, invitation, token),
+      }))
+    );
+    res.json({
+      id: job.id,
+      status: DataImportStatus.completed,
+      result: transactionResult.completedResult,
+      deliveries,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido.';
     if (message === 'IMPORT_ALREADY_CLAIMED') {

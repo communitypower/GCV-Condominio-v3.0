@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient, PlatformRole } from '@prisma/client';
+import { MembershipStatus, PrismaClient, PlatformRole } from '@prisma/client';
+import { isConfiguredSystemAdmin } from '../services/system-admin';
 
 const prisma = new PrismaClient();
 
@@ -7,10 +8,18 @@ export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
     email: string;
+    isSystemAdmin: boolean;
     memberships: {
       accountId: string;
       condominiumId: string | null;
       role: PlatformRole;
+      status: MembershipStatus;
+    }[];
+    pendingMemberships: {
+      accountId: string;
+      condominiumId: string | null;
+      role: PlatformRole;
+      status: MembershipStatus;
     }[];
   };
   authorizationContext?: {
@@ -55,11 +64,23 @@ export const requireAuth = async (req: AuthenticatedRequest, res: Response, next
     req.user = {
       id: user.id,
       email: user.email,
-      memberships: user.memberships.map((m) => ({
+      isSystemAdmin: user.isSystemAdmin || isConfiguredSystemAdmin(user.email),
+      memberships: user.memberships
+        .filter((m) => m.status === MembershipStatus.active)
+        .map((m) => ({
+          accountId: m.accountId,
+          condominiumId: m.condominiumId,
+          role: m.role,
+          status: m.status,
+        })),
+      pendingMemberships: user.memberships
+        .filter((m) => m.status === MembershipStatus.pending)
+        .map((m) => ({
         accountId: m.accountId,
         condominiumId: m.condominiumId,
         role: m.role,
-      })),
+          status: m.status,
+        })),
     };
 
     next();
@@ -67,6 +88,16 @@ export const requireAuth = async (req: AuthenticatedRequest, res: Response, next
     console.error("Auth Middleware Error:", error);
     res.status(500).json({ error: "Erro de autenticação interna." });
   }
+};
+
+export const requireSystemAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Não autenticado.' });
+  }
+  if (!req.user.isSystemAdmin) {
+    return res.status(403).json({ error: 'Acesso restrito à administração do sistema.' });
+  }
+  next();
 };
 
 export const requireRole = (roles: PlatformRole[]) => {
