@@ -344,10 +344,13 @@ router.post('/:condoId/imports/:importId/apply', requireAuth, tenantGuard, requi
     }, { timeout: 60_000 });
 
     const deliveries = await Promise.all(
-      transactionResult.pendingDeliveries.map(async ({ invitation, token }) => ({
-        invitation: serializeInvitation(invitation),
-        delivery: await finalizeInvitationDelivery(prisma, invitation, token),
-      }))
+      transactionResult.pendingDeliveries.map(async ({ invitation, token }) => {
+        const finalized = await finalizeInvitationDelivery(prisma, invitation, token);
+        return {
+          invitation: serializeInvitation(finalized.invitation),
+          delivery: finalized.delivery,
+        };
+      })
     );
     res.json({
       id: job.id,

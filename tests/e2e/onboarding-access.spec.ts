@@ -6,6 +6,8 @@ test.describe('onboarding and scoped access', () => {
   test.skip(!isLocal, 'Local seed identities are required for this suite.');
 
   test('system administrator reaches the onboarding console', async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
     await page.goto('/');
     await page.getByTestId('login-email').fill('sindico@gcv.com.br');
     await page.getByTestId('login-password').fill('sindico123');
@@ -15,6 +17,35 @@ test.describe('onboarding and scoped access', () => {
     await expect(page.getByRole('heading', { name: 'Onboarding de condomínio' })).toBeVisible();
     await expect(page.getByText('Administração do sistema', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Criar e convidar síndico' })).toBeVisible();
+
+    await page.route('**/api/v1/onboarding/system/condominiums', route => route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        account: { id: 'account-test', name: 'Conta E2E' },
+        condominium: { id: 'condominium-test', name: 'Condomínio E2E' },
+        invitation: {
+          id: 'invitation-test',
+          status: 'pending',
+          emailNormalized: 'sindico.e2e@example.com',
+        },
+        delivery: {
+          method: 'manual_link',
+          acceptanceUrl: 'http://localhost:3000/invite/test-token',
+        },
+      }),
+    }));
+    await page.getByLabel('Nome da conta').fill('Conta E2E');
+    await page.getByLabel('Nome do condomínio').fill('Condomínio E2E');
+    await page.getByLabel('Endereço').fill('Rua de Teste, 100');
+    await page.getByLabel('Nome completo').fill('Síndico E2E');
+    await page.getByLabel('E-mail').fill('sindico.e2e@example.com');
+    await page.getByRole('button', { name: 'Criar e convidar síndico' }).click();
+
+    await expect(page.getByText('Onboarding criado', { exact: true })).toBeVisible();
+    await expect(page.getByText(/O convite de sindico\.e2e@example\.com está pending/)).toBeVisible();
+    await expect(page.locator('input[readonly]')).toHaveValue('http://localhost:3000/invite/test-token');
+    expect(pageErrors).toEqual([]);
   });
 
   test('resident receives only active units linked to their identity', async ({ page }) => {

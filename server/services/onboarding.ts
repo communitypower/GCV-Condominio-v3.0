@@ -54,11 +54,16 @@ export async function onboardCondominium(
     });
     return { account, condominium, ...invitationResult };
   });
-  const delivery = await finalizeInvitationDelivery(prisma, created.invitation, created.token);
+  const finalized = await finalizeInvitationDelivery(prisma, created.invitation, created.token);
   return {
     account: created.account,
     condominium: created.condominium,
-    invitation: serializeInvitation(created.invitation),
-    delivery,
+    syndic: {
+      id: created.identity.user.id,
+      email: created.identity.user.email,
+      name: created.identity.person.name,
+    },
+    invitation: serializeInvitation(finalized.invitation),
+    delivery: finalized.delivery,
   };
 }

@@ -330,8 +330,11 @@ async function run() {
     actorId: admin.id,
     actorEmail: admin.email,
   });
-  assert.strictEqual(onboarding.invitation.status, InvitationStatus.pending);
+  assert.strictEqual(onboarding.invitation.status, InvitationStatus.sent);
   assert.strictEqual(onboarding.delivery.method, 'manual_link');
+  assert.strictEqual(onboarding.syndic.email, createdEmails[2]);
+  assert.strictEqual(onboarding.syndic.name, `${marker} syndic`);
+  assert.ok(onboarding.syndic.id);
   assert.ok(await prisma.auditEvent.count({
     where: {
       accountId: onboarding.account.id,

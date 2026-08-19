@@ -266,15 +266,22 @@ export async function finalizeInvitationDelivery(
     where: { id: invitation.id, status: InvitationStatus.pending },
     data: { status: InvitationStatus.sent, sentAt },
   });
-  return delivery;
+  const finalizedInvitation = await prisma.invitation.findUnique({
+    where: { id: invitation.id },
+    select: invitationSelect(),
+  });
+  if (!finalizedInvitation) {
+    throw new DomainError('INVITATION_NOT_FOUND', 'Convite não encontrado após a entrega.', 404);
+  }
+  return { delivery, invitation: finalizedInvitation };
 }
 
 export async function createInvitation(prisma: PrismaClient, input: CreateInvitationInput) {
   const created = await prisma.$transaction((tx) => createInvitationInTransaction(tx, input));
-  const delivery = await finalizeInvitationDelivery(prisma, created.invitation, created.token);
+  const finalized = await finalizeInvitationDelivery(prisma, created.invitation, created.token);
   return {
-    invitation: serializeInvitation(created.invitation),
-    delivery,
+    invitation: serializeInvitation(finalized.invitation),
+    delivery: finalized.delivery,
   };
 }
 
@@ -482,8 +489,11 @@ export async function resendInvitation(
     });
     return { invitation, token };
   });
-  const delivery = await finalizeInvitationDelivery(prisma, rotated.invitation, rotated.token);
-  return { invitation: serializeInvitation(rotated.invitation), delivery };
+  const finalized = await finalizeInvitationDelivery(prisma, rotated.invitation, rotated.token);
+  return {
+    invitation: serializeInvitation(finalized.invitation),
+    delivery: finalized.delivery,
+  };
 }
 
 export async function closeInvitation(
