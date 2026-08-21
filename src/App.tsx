@@ -72,6 +72,10 @@ const administrativeRoles = new Set(['admin', 'syndic']);
 const staffRoles = new Set(['staff', 'manager', 'council_member', 'accountant', 'doorman', 'vendor']);
 const uiRoleFor = (role?: string): LoggedInUser['role'] =>
   administrativeRoles.has(role || '') ? 'admin' : staffRoles.has(role || '') ? 'staff' : 'resident';
+const authDescription = (user: { isSystemAdmin?: boolean; memberships?: Array<{ role?: string }> }) =>
+  user.isSystemAdmin && !user.memberships?.length
+    ? 'Administrador da Plataforma'
+    : user.memberships?.[0]?.role || 'Morador';
 
 const PRESET_USERS: LoggedInUser[] = [
   {
@@ -168,23 +172,25 @@ export default function App() {
           const data = await response.json();
           const matchedPreset = PRESET_USERS.find(pu => pu.email === data.user.email);
           if (matchedPreset) {
-            setUser({
+            const sessionUser = {
               ...matchedPreset,
               accountId: data.user.memberships?.[0]?.accountId,
               memberships: data.user.memberships,
               isSystemAdmin: data.user.isSystemAdmin,
-            });
+            };
+            setUser({ ...sessionUser, description: authDescription(sessionUser) });
           } else {
-            setUser({
+            const sessionUser = {
               name: data.user.name,
               email: data.user.email,
               role: uiRoleFor(data.user.memberships[0]?.role),
               avatar: data.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
-              description: data.user.memberships[0]?.role || 'Morador',
+              description: '',
               accountId: data.user.memberships?.[0]?.accountId,
               memberships: data.user.memberships,
               isSystemAdmin: data.user.isSystemAdmin,
-            });
+            };
+            setUser({ ...sessionUser, description: authDescription(sessionUser) });
           }
         } else {
           setUser(null);
@@ -1083,16 +1089,17 @@ export default function App() {
           isSystemAdmin: data.user.isSystemAdmin,
         };
       } else {
-        enrichedUser = {
+        const authenticatedUser = {
           name: data.user.name,
           email: data.user.email,
           role: uiRoleFor(data.user.memberships[0]?.role),
           avatar: data.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
-          description: data.user.memberships[0]?.role || 'Morador',
+          description: '',
           accountId: data.user.memberships?.[0]?.accountId,
           memberships: data.user.memberships,
           isSystemAdmin: data.user.isSystemAdmin,
         };
+        enrichedUser = { ...authenticatedUser, description: authDescription(authenticatedUser) };
       }
 
       setUser(enrichedUser);
@@ -1190,16 +1197,17 @@ export default function App() {
             isSystemAdmin: loggedUser.isSystemAdmin,
           };
         } else {
-          enrichedUser = {
+          const authenticatedUser = {
             name: loggedUser.name,
             email: loggedUser.email,
             role: uiRoleFor(loggedUser.memberships[0]?.role),
             avatar: loggedUser.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
-            description: loggedUser.memberships[0]?.role || 'Morador',
+            description: '',
             accountId: loggedUser.memberships?.[0]?.accountId,
             memberships: loggedUser.memberships,
             isSystemAdmin: loggedUser.isSystemAdmin,
           };
+          enrichedUser = { ...authenticatedUser, description: authDescription(authenticatedUser) };
         }
 
         setUser(enrichedUser);
@@ -1463,10 +1471,12 @@ export default function App() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <span className="text-xl bg-[#10b981]/10 border border-[#10b981]/25 p-1.5 rounded-lg">
-                {activeEdificio?.avatar || '🏢'}
+                {isPlatformOnlyAdmin ? <ShieldCheck className="w-5 h-5" /> : activeEdificio?.avatar || '🏢'}
               </span>
               <div>
-                <select
+                {isPlatformOnlyAdmin ? (
+                  <p className="font-sans font-bold text-xs text-[#E2E8F0]">Administração da Plataforma</p>
+                ) : <select
                   value={activeEdificioId}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -1483,19 +1493,19 @@ export default function App() {
                       {ed.name}
                     </option>
                   ))}
-                </select>
+                </select>}
                 <span className="text-[8px] text-zinc-400 font-semibold tracking-wider uppercase block mt-0.5">Módulo Ativo</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <button
+              {!isPlatformOnlyAdmin && <button
                 onClick={handleResetSystemData}
                 title="Recarregar dados do servidor"
                 className="p-1.5 rounded bg-slate-800/50 text-slate-400 hover:text-white"
               >
                 <FolderSync className="w-4 h-4" />
-              </button>
+              </button>}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2 rounded-lg hover:bg-slate-800 text-slate-300"
@@ -1765,13 +1775,13 @@ export default function App() {
             >
               <LogOut className="w-3 h-3" /> Encerrar Sessão
             </button>
-            <button
+            {!isPlatformOnlyAdmin && <button
               onClick={handleResetSystemData}
               title="Recarregar dados do servidor"
               className="w-full text-zinc-500 hover:text-[#10b981] hover:bg-white/5 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all text-center"
             >
               <FolderSync className="w-3 h-3" /> Recarregar Dados
-            </button>
+            </button>}
           </div>
         </div>
       </aside>
@@ -2064,7 +2074,9 @@ export default function App() {
         </main>
 
         <footer className="border-t border-slate-800/40 bg-[#0F1115]/40 py-6 text-center text-xs text-slate-500 font-semibold tracking-wide print:hidden">
-          <p>GCV Condomínio • Central de Administração Predial {activeEdificio?.name || 'Bella Vista'}</p>
+          <p>{isPlatformOnlyAdmin
+            ? 'GCV • Administração da Plataforma'
+            : `GCV Condomínio • Central de Administração Predial ${activeEdificio?.name || 'Bella Vista'}`}</p>
           <p className="mt-1 font-medium text-[10px] text-slate-600">© 2026. Todos os direitos reservados. Projeto operando na arquitetura de Alta Sofisticação Dark.</p>
         </footer>
       </div>

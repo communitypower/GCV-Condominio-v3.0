@@ -16,6 +16,10 @@ test.describe('onboarding and scoped access', () => {
     await expect(page.getByTestId('nav-onboarding')).toBeVisible();
     await expect(page.getByTestId('active-building-selector')).toHaveCount(0);
     await expect(page.getByTestId('nav-dashboard')).toHaveCount(0);
+    await expect(page.getByTestId('dashboard-sidebar')).toContainText(/Administrador da Plataforma/i);
+    await expect(page.getByTestId('dashboard-sidebar')).not.toContainText(/Morador/i);
+    await expect(page.getByText('GCV • Administração da Plataforma', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Recarregar Dados/i)).toHaveCount(0);
     await page.getByTestId('nav-onboarding').click();
     await expect(page.getByRole('heading', { name: 'Onboarding de condomínio' })).toBeVisible();
     await expect(page.getByText('Administração do sistema', { exact: true })).toBeVisible();
