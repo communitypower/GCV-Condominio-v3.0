@@ -235,10 +235,10 @@ export default function App() {
   const activeMembership = user?.memberships?.find((membership: any) =>
     membership.condominiumId === activeEdificioId
   ) || user?.memberships?.find((membership: any) => membership.condominiumId === null) || user?.memberships?.[0];
-  const platformRole = activeMembership?.role as string | undefined;
+  const isSystemAdministrator = Boolean(user?.isSystemAdmin);
+  const platformRole = isSystemAdministrator ? 'syndic' : activeMembership?.role as string | undefined;
   const currentRole = uiRoleFor(platformRole);
-  const isPlatformOnlyAdmin = Boolean(user?.isSystemAdmin && !activeMembership);
-  const isResident = !isPlatformOnlyAdmin && currentRole === 'resident';
+  const isResident = !isSystemAdministrator && currentRole === 'resident';
   const canAdminister = platformRole === 'syndic';
   const canViewFinance = platformRole === 'syndic' || platformRole === 'accountant';
   const canManageResidents = platformRole === 'syndic';
@@ -246,15 +246,9 @@ export default function App() {
   const canManageAnnouncements = ['syndic', 'manager', 'staff'].includes(platformRole || '');
   const residentUnit = units[0];
 
-  useEffect(() => {
-    if (user?.isSystemAdmin && !user.memberships?.length) {
-      setActiveTab('onboarding');
-    }
-  }, [user]);
-
   // Load and auto-transition states whenever activeEdificioId changes!
   useEffect(() => {
-    if (!user || !activeEdificioId || (!activeMembership && user.isSystemAdmin)) return;
+    if (!user || !activeEdificioId) return;
     localStorage.setItem('gcv_active_edificio_id', activeEdificioId);
     const controller = new AbortController();
     const request = (url: string) => fetch(url, { signal: controller.signal });
@@ -1471,12 +1465,10 @@ export default function App() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <span className="text-xl bg-[#10b981]/10 border border-[#10b981]/25 p-1.5 rounded-lg">
-                {isPlatformOnlyAdmin ? <ShieldCheck className="w-5 h-5" /> : activeEdificio?.avatar || '🏢'}
+                {activeEdificio?.avatar || '🏢'}
               </span>
               <div>
-                {isPlatformOnlyAdmin ? (
-                  <p className="font-sans font-bold text-xs text-[#E2E8F0]">Administração da Plataforma</p>
-                ) : <select
+                <select
                   value={activeEdificioId}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -1493,19 +1485,19 @@ export default function App() {
                       {ed.name}
                     </option>
                   ))}
-                </select>}
+                </select>
                 <span className="text-[8px] text-zinc-400 font-semibold tracking-wider uppercase block mt-0.5">Módulo Ativo</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {!isPlatformOnlyAdmin && <button
+              <button
                 onClick={handleResetSystemData}
                 title="Recarregar dados do servidor"
                 className="p-1.5 rounded bg-slate-800/50 text-slate-400 hover:text-white"
               >
                 <FolderSync className="w-4 h-4" />
-              </button>}
+              </button>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2 rounded-lg hover:bg-slate-800 text-slate-300"
@@ -1519,7 +1511,7 @@ export default function App() {
         {/* Mobile menu panel overlay */}
         {mobileMenuOpen && (
           <div className="bg-[#14161A] border-t border-slate-800/60 font-semibold px-4 pt-2 pb-4 space-y-2 text-xs max-h-[80vh] overflow-y-auto">
-            {!isPlatformOnlyAdmin && (isResident ? (
+            {isResident ? (
               <>
                 <button onClick={() => { setActiveTab('dashboard'); setMobileMenuOpen(false); }} className={navBtnStyle('dashboard')}>Portal do Morador</button>
                 <button onClick={() => { setActiveTab('ia_assistant'); setMobileMenuOpen(false); }} className={navBtnStyle('ia_assistant')}>Assistente IA Copilot ✨</button>
@@ -1554,7 +1546,7 @@ export default function App() {
                 )}
                 <button onClick={() => { setActiveTab('notificacoes'); setMobileMenuOpen(false); }} className={navBtnStyle('notificacoes')}>Avisos & Mural</button>
               </>
-            ))}
+            )}
             {user.isSystemAdmin && (
               <button onClick={() => { setActiveTab('onboarding'); setMobileMenuOpen(false); }} className={navBtnStyle('onboarding')}>
                 Administração da Plataforma
@@ -1581,7 +1573,7 @@ export default function App() {
           </div>
 
           {/* BUILDING SWITCHER CARD */}
-          {!isPlatformOnlyAdmin && <div className="bg-zinc-950/70 border border-zinc-850 p-3 rounded-xl space-y-2">
+          <div className="bg-zinc-950/70 border border-zinc-850 p-3 rounded-xl space-y-2">
             <span className="text-[8px] text-[#10b981] font-bold tracking-widest uppercase block">Edifício Ativo</span>
             
             <div className="flex items-center gap-2">
@@ -1611,20 +1603,13 @@ export default function App() {
                 </p>
               </div>
             </div>
-          </div>}
+          </div>
         </div>
 
         {/* Sidebar grouped navigational menu */}
         <div className="flex-1 px-4 space-y-4 pb-6 select-none text-[10px] font-bold text-zinc-500 tracking-wider">
           
-          {isPlatformOnlyAdmin ? (
-            <div className="space-y-1 pt-2">
-              <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">PLATAFORMA</span>
-              <button data-testid="nav-onboarding" onClick={() => setActiveTab('onboarding')} className={navBtnStyle('onboarding')}>
-                <ShieldCheck className="w-3.5 h-3.5" /> Onboarding
-              </button>
-            </div>
-          ) : isResident ? (
+          {isResident ? (
             /* RESTRICTED MORADOR SIDEBAR */
             <div className="space-y-1">
               <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">PORTAL DO MORADOR</span>
@@ -1765,7 +1750,7 @@ export default function App() {
             </div>
             <div className="text-left">
               <p className="text-xs font-semibold text-white leading-tight">{user.name}</p>
-              <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5 leading-tight">{user.description}</p>
+              <p data-testid="profile-description" className="text-[10px] text-slate-500 font-bold uppercase mt-0.5 leading-tight">{user.description}</p>
             </div>
           </div>
           <div className="space-y-1.5 pt-2 border-t border-slate-800/20">
@@ -1775,13 +1760,13 @@ export default function App() {
             >
               <LogOut className="w-3 h-3" /> Encerrar Sessão
             </button>
-            {!isPlatformOnlyAdmin && <button
+            <button
               onClick={handleResetSystemData}
               title="Recarregar dados do servidor"
               className="w-full text-zinc-500 hover:text-[#10b981] hover:bg-white/5 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all text-center"
             >
               <FolderSync className="w-3 h-3" /> Recarregar Dados
-            </button>}
+            </button>
           </div>
         </div>
       </aside>
@@ -2074,9 +2059,7 @@ export default function App() {
         </main>
 
         <footer className="border-t border-slate-800/40 bg-[#0F1115]/40 py-6 text-center text-xs text-slate-500 font-semibold tracking-wide print:hidden">
-          <p>{isPlatformOnlyAdmin
-            ? 'GCV • Administração da Plataforma'
-            : `GCV Condomínio • Central de Administração Predial ${activeEdificio?.name || 'Bella Vista'}`}</p>
+          <p>GCV Condomínio • Central de Administração Predial {activeEdificio?.name || 'Bella Vista'}</p>
           <p className="mt-1 font-medium text-[10px] text-slate-600">© 2026. Todos os direitos reservados. Projeto operando na arquitetura de Alta Sofisticação Dark.</p>
         </footer>
       </div>

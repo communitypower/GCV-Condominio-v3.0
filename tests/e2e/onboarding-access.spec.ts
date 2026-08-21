@@ -14,12 +14,17 @@ test.describe('onboarding and scoped access', () => {
     await page.getByTestId('login-submit').click();
 
     await expect(page.getByTestId('nav-onboarding')).toBeVisible();
-    await expect(page.getByTestId('active-building-selector')).toHaveCount(0);
-    await expect(page.getByTestId('nav-dashboard')).toHaveCount(0);
-    await expect(page.getByTestId('dashboard-sidebar')).toContainText(/Administrador da Plataforma/i);
-    await expect(page.getByTestId('dashboard-sidebar')).not.toContainText(/Morador/i);
-    await expect(page.getByText('GCV • Administração da Plataforma', { exact: true })).toBeVisible();
-    await expect(page.getByText(/Recarregar Dados/i)).toHaveCount(0);
+    await expect(page.getByTestId('active-building-selector')).toBeVisible();
+    await expect(page.getByTestId('nav-dashboard')).toBeVisible();
+    for (const menu of [
+      'edificios', 'equipamentos', 'planos', 'ordens', 'logs', 'bim', 'ciclovida',
+      'compras', 'cobrancas', 'pagamentos', 'demonstrativos', 'condominos',
+      'documentacao', 'notificacoes', 'usuarios', 'carga-dados', 'github',
+    ]) {
+      await expect(page.getByTestId(`nav-${menu}`)).toBeVisible();
+    }
+    await expect(page.getByTestId('profile-description')).toHaveText(/Administrador da Plataforma/i);
+    await expect(page.getByText(/Recarregar Dados/i)).toBeVisible();
     await page.getByTestId('nav-onboarding').click();
     await expect(page.getByRole('heading', { name: 'Onboarding de condomínio' })).toBeVisible();
     await expect(page.getByText('Administração do sistema', { exact: true })).toBeVisible();

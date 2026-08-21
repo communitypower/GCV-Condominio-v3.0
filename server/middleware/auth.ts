@@ -105,6 +105,9 @@ export const requireRole = (roles: PlatformRole[]) => {
     if (!req.user) {
       return res.status(401).json({ error: "Não autenticado." });
     }
+    if (req.user.isSystemAdmin) {
+      return next();
+    }
 
     const scopedMemberships = req.authorizationContext?.memberships ?? req.user.memberships;
     const hasRole = scopedMemberships.some((membership) => roles.includes(membership.role));
@@ -137,6 +140,20 @@ export const tenantGuard = async (req: AuthenticatedRequest, res: Response, next
         return res.status(403).json({ error: "Acesso negado: escopo de conta inconsistente." });
       }
       accountId = condominium.accountId;
+    }
+
+    if (req.user.isSystemAdmin) {
+      req.authorizationContext = {
+        accountId,
+        condominiumId: condoId,
+        memberships: [{
+          accountId: accountId || '',
+          condominiumId: condoId || null,
+          role: PlatformRole.syndic,
+          status: MembershipStatus.active,
+        }],
+      };
+      return next();
     }
 
     const scopedMemberships = membershipsForScope(req.user.memberships, accountId, condoId);

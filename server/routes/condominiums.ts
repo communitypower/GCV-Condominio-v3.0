@@ -16,6 +16,10 @@ const createCondominiumSchema = z.object({
 // GET /api/v1/condominiums
 router.get('/', requireAuth, async (req: any, res) => {
   try {
+    if (req.user.isSystemAdmin) {
+      const condominiums = await prisma.condominium.findMany({ orderBy: { name: 'asc' } });
+      return res.json(condominiums);
+    }
     const condoIds = req.user.memberships
       .map((m: any) => m.condominiumId)
       .filter(Boolean) as string[];

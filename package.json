@@ -25,6 +25,7 @@
     "test:oauth": "TMPDIR=/tmp tsx tests/oauth_flows.ts",
     "test:csrf": "TMPDIR=/tmp tsx tests/csrf_guard.ts",
     "test:access": "TMPDIR=/tmp tsx tests/platform_authorization.ts && TMPDIR=/tmp tsx tests/invitation_access_lifecycle.ts",
+    "test:role-flow": "TMPDIR=/tmp tsx tests/role_onboarding_workflow.ts",
     "test:api": "npm run test:api:auth && npm run test:api:documents && npm run test:api:operations && npm run test:api:flags && npm run test:api:observability",
     "test:api:auth": "TMPDIR=/tmp tsx tests/auth_tenant_isolation.ts",
     "test:api:documents": "TMPDIR=/tmp tsx tests/document_acl.ts",

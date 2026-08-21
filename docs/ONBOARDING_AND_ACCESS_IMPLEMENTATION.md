@@ -11,7 +11,8 @@ Este documento descreve o fluxo implementado para entrada de condomínios, sínd
 - O acesso exige simultaneamente `User.isSystemAdmin=true` e um e-mail aprovado no código.
 - Os únicos administradores aprovados são `cassianomarins@gmail.com` e `vitorlcastro92@gmail.com`.
 - Cria conta, condomínio e primeiro vínculo do síndico em uma transação.
-- Não recebe automaticamente acesso aos dados operacionais do cliente.
+- Atua como superusuário global, com visão e operação de todos os condomínios e módulos.
+- O acesso global é calculado no backend e não exige memberships persistidas por condomínio.
 - A operação gera convite e eventos de auditoria vinculados à nova conta e condomínio.
 
 ### Síndico
@@ -64,7 +65,7 @@ Este documento descreve o fluxo implementado para entrada de condomínios, sínd
 - O banco valida que `Membership.accountId` corresponde ao condomínio informado.
 - Relacionamentos ativos duplicados e memberships duplicadas no escopo da conta são bloqueados.
 - Papéis são avaliados no condomínio ativo; um papel administrativo em outro tenant não concede privilégios.
-- Acesso de administrador da plataforma não substitui uma membership operacional.
+- Administradores aprovados recebem um contexto operacional global equivalente ao papel de síndico em cada tenant acessado.
 - A flag `isSystemAdmin` isolada não concede acesso administrativo a outro e-mail.
 - Endpoints E2E retornam `404` em produção, independentemente da feature flag.
 
@@ -98,12 +99,12 @@ Essa senha não deve ser configurada no Railway. Em QA e produção, os administ
 | Capacidade | Administrador da plataforma | Síndico | Staff | Morador |
 | --- | --- | --- | --- | --- |
 | Criar conta, condomínio e convite de síndico | Sim | Não | Não | Não |
-| Acessar dados operacionais sem membership | Não | Não | Não | Não |
-| Gerenciar blocos e unidades | Não | Sim | Conforme permissão operacional | Não |
-| Cadastrar/importar moradores | Não | Sim | Não | Não |
-| Gerenciar convites de moradores | Não | Sim | Não | Não |
-| Operar manutenção | Não | Sim | Sim | Abrir/acompanhar chamados próprios |
-| Acessar dados de outra unidade ou condomínio | Não | Não | Não | Não |
+| Acessar dados operacionais sem membership | Sim, em todos os tenants | Não | Não | Não |
+| Gerenciar blocos e unidades | Sim | Sim | Conforme permissão operacional | Não |
+| Cadastrar/importar moradores | Sim | Sim | Não | Não |
+| Gerenciar convites de moradores | Sim | Sim | Não | Não |
+| Operar manutenção | Sim | Sim | Sim | Abrir/acompanhar chamados próprios |
+| Acessar dados de outra unidade ou condomínio | Sim | Não | Não | Não |
 
 Papéis legados mais específicos (`manager`, `accountant`, `doorman`, `council_member` e `vendor`) permanecem disponíveis apenas nas rotinas explicitamente listadas no backend. O papel legado `admin` não herda permissões de `syndic`.
 

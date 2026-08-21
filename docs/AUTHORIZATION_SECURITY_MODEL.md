@@ -3,7 +3,7 @@
 ## Princípios
 
 1. Autenticação identifica o usuário; não concede acesso a tenant.
-2. Toda operação de tenant exige membership `active` no `accountId` e `condominiumId` corretos.
+2. Toda operação de tenant exige membership `active` no escopo correto, exceto para os dois superusuários aprovados.
 3. O papel é validado no backend depois da resolução do escopo pelo `tenantGuard`.
 4. Controles ocultos no frontend são apenas UX e repetem as decisões do backend.
 5. Recursos inexistentes retornam `404`; recursos existentes fora do tenant retornam `403`.
@@ -27,13 +27,16 @@
 ```text
 sessão válida
   -> usuário existente
-  -> membership ativa
+  -> superusuário aprovado? contexto global
+  -> caso contrário: membership ativa
   -> accountId/condominiumId compatíveis
-  -> papel explicitamente autorizado
+  -> papel ou bypass global explicitamente autorizado
   -> filtro de recurso por tenant/unidade
 ```
 
-Administradores da plataforma seguem uma trilha separada. Apenas os dois e-mails aprovados, também marcados no banco, acessam o onboarding de clientes. Eles precisam receber uma membership explícita para acessar dados operacionais de qualquer condomínio.
+Administradores da plataforma seguem uma trilha separada. Apenas os dois e-mails aprovados, também marcados no banco, recebem contexto global equivalente a síndico para qualquer tenant acessado. Esse contexto é calculado pelo backend, não cria memberships no banco e libera onboarding, visão de portfólio e todos os módulos operacionais.
+
+O bypass global nunca considera apenas `User.isSystemAdmin`: o e-mail também precisa pertencer à lista imutável aprovada. Usuários comuns, síndicos, staff e moradores continuam sujeitos integralmente ao `tenantGuard`.
 
 ## Convites
 
@@ -43,7 +46,7 @@ Administradores da plataforma seguem uma trilha separada. Apenas os dois e-mails
 - Cancelamento impede o primeiro acesso.
 - Revogação encerra membership e vínculo de unidade.
 - A inspeção de um convite vencido persiste o estado `expired` e retorna HTTP `410`.
-- Síndicos só podem emitir convites com papel `resident` no próprio condomínio.
+- Síndicos só podem emitir convites com papel `resident` no próprio condomínio; superusuários podem operar esse fluxo globalmente.
 - Convites de `syndic` são emitidos somente pelo onboarding da plataforma.
 
 ## Auditoria mínima

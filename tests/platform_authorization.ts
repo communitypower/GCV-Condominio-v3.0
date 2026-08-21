@@ -40,6 +40,13 @@ let approved = false;
 requireSystemAdmin(approvedRequest, mockResponse().response, () => { approved = true; });
 assert.strictEqual(approved, true);
 
+const superuserRoleRequest: any = { user: { isSystemAdmin: true, memberships: [] } };
+let superuserRoleAllowed = false;
+requireRole([PlatformRole.syndic])(superuserRoleRequest, mockResponse().response, () => {
+  superuserRoleAllowed = true;
+});
+assert.strictEqual(superuserRoleAllowed, true, 'Approved platform administrators must bypass tenant role checks');
+
 const rejectedAdmin = mockResponse();
 requireSystemAdmin({ user: { isSystemAdmin: false } } as any, rejectedAdmin.response, () => {
   throw new Error('Unapproved user must not pass requireSystemAdmin');
