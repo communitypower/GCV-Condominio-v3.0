@@ -70,4 +70,37 @@ test.describe('onboarding and scoped access', () => {
     expect(units[0].relationships).toHaveLength(1);
     expect(units[0].relationships[0].person.email).toBe('carlos.ramos@email.com');
   });
+
+  test('invitation detects an authenticated account mismatch and supports account switching', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('login-email').fill('vitorlcastro92@gmail.com');
+    await page.getByTestId('login-password').fill('platform-admin-local-123');
+    await page.getByTestId('login-submit').click();
+    await expect(page.getByTestId('nav-onboarding')).toBeVisible();
+
+    await page.route('**/api/v1/onboarding/invitations/account-mismatch-token', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'resident.invited@example.com',
+        name: 'Morador Convidado',
+        phone: '11999999999',
+        role: 'resident',
+        relationshipRole: 'owner',
+        expiresAt: '2099-12-31T23:59:59.000Z',
+        condominium: { name: 'Condomínio QA' },
+        unit: { number: '101', building: { name: 'Bloco A' } },
+        requiresExistingAccountLogin: false,
+      }),
+    }));
+    await page.goto('/invite/account-mismatch-token');
+
+    await expect(page.getByRole('heading', { name: 'Troque de conta para continuar' })).toBeVisible();
+    await expect(page.getByText('vitorlcastro92@gmail.com', { exact: true })).toBeVisible();
+    await expect(page.getByText('resident.invited@example.com', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Sair e continuar com o convite' }).click();
+
+    await expect(page.getByText('Crie uma senha', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Troque de conta para continuar' })).toHaveCount(0);
+  });
 });

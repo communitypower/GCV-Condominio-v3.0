@@ -200,6 +200,10 @@ async function run() {
   const inspected = await inspectInvitation(prisma, firstToken);
   assert.strictEqual(inspected.email, createdEmails[0]);
   assert.strictEqual(inspected.requiresExistingAccountLogin, false);
+  await assert.rejects(
+    () => acceptInvitation(prisma, { token: firstToken, authenticatedUserId: actor.id }),
+    /O convite pertence a outra conta/
+  );
 
   const rotated = await resendInvitation(prisma, {
     invitationId: created.invitation.id,

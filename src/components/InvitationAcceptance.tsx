@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, CheckCircle2, KeyRound, Loader2, LogIn, ShieldCheck } from 'lucide-react';
+import { Building2, CheckCircle2, KeyRound, Loader2, LogIn, LogOut, ShieldCheck } from 'lucide-react';
 
 type InvitationDetails = {
   email: string;
@@ -19,7 +19,7 @@ async function readPayload(response: Response) {
 
 export default function InvitationAcceptance({ token }: { token: string }) {
   const [invitation, setInvitation] = useState<InvitationDetails | null>(null);
-  const [sessionActive, setSessionActive] = useState(false);
+  const [sessionUser, setSessionUser] = useState<{ email: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
@@ -42,7 +42,10 @@ export default function InvitationAcceptance({ token }: { token: string }) {
         setInvitation(payload);
         setName(payload.name || '');
         setPhone(payload.phone || '');
-        setSessionActive(sessionResponse.ok);
+        if (sessionResponse.ok) {
+          const sessionPayload = await readPayload(sessionResponse);
+          setSessionUser(sessionPayload?.user?.email ? { email: sessionPayload.user.email } : null);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Não foi possível carregar o convite.');
       } finally {
@@ -56,7 +59,8 @@ export default function InvitationAcceptance({ token }: { token: string }) {
     const receiveOAuth = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type !== 'GOOGLE_AUTH_SUCCESS') return;
-      setSessionActive(true);
+      const authenticatedEmail = event.data.payload?.user?.email;
+      setSessionUser(authenticatedEmail ? { email: authenticatedEmail } : null);
       setOauthLoading(false);
       setError(null);
     };
@@ -79,7 +83,8 @@ export default function InvitationAcceptance({ token }: { token: string }) {
     setSubmitting(true);
     setError(null);
     try {
-      const endpoint = sessionActive
+      const sessionMatchesInvitation = sessionUser?.email.trim().toLowerCase() === invitation?.email.trim().toLowerCase();
+      const endpoint = sessionMatchesInvitation
         ? `/api/v1/onboarding/invitations/${encodeURIComponent(token)}/accept-existing`
         : `/api/v1/onboarding/invitations/${encodeURIComponent(token)}/accept`;
       const response = await fetch(endpoint, {
@@ -88,7 +93,7 @@ export default function InvitationAcceptance({ token }: { token: string }) {
         body: JSON.stringify({
           name,
           phone,
-          ...(!sessionActive ? { password } : {}),
+          ...(!sessionMatchesInvitation ? { password } : {}),
         }),
       });
       const payload = await readPayload(response);
@@ -113,7 +118,7 @@ export default function InvitationAcceptance({ token }: { token: string }) {
       });
       const payload = await readPayload(response);
       if (!response.ok) throw new Error(payload?.error || 'Não foi possível entrar na conta.');
-      setSessionActive(true);
+      setSessionUser(payload?.user?.email ? { email: payload.user.email } : { email: invitation!.email });
       setLoginPassword('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível entrar na conta.');
@@ -121,6 +126,24 @@ export default function InvitationAcceptance({ token }: { token: string }) {
       setSubmitting(false);
     }
   };
+
+  const logoutForInvitation = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await fetch('/api/v1/auth/logout', { method: 'POST' });
+      setSessionUser(null);
+    } catch {
+      setError('Não foi possível encerrar a sessão atual. Atualize a página e tente novamente.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const sessionMatchesInvitation = Boolean(
+    invitation && sessionUser?.email.trim().toLowerCase() === invitation.email.trim().toLowerCase()
+  );
+  const sessionBelongsToAnotherAccount = Boolean(sessionUser && !sessionMatchesInvitation);
 
   if (loading) {
     return <div className="min-h-screen bg-[#0A0B0D] text-zinc-300 grid place-items-center"><Loader2 className="w-7 h-7 animate-spin text-emerald-400" /></div>;
@@ -160,7 +183,17 @@ export default function InvitationAcceptance({ token }: { token: string }) {
                 <p className="text-xs text-zinc-500">Convite para {invitation.email}</p>
               </div>
 
-              {invitation.requiresExistingAccountLogin && !sessionActive ? (
+              {sessionBelongsToAnotherAccount ? (
+                <div className="space-y-4 rounded-md border border-amber-500/30 bg-amber-500/5 p-4">
+                  <div>
+                    <h2 className="font-semibold text-white flex items-center gap-2"><LogOut className="w-4 h-4 text-amber-400" />Troque de conta para continuar</h2>
+                    <p className="text-xs text-zinc-400 mt-2">Você está conectado como <strong className="text-zinc-200">{sessionUser?.email}</strong>, mas este convite foi emitido para <strong className="text-zinc-200">{invitation.email}</strong>.</p>
+                  </div>
+                  <button type="button" disabled={submitting} onClick={() => void logoutForInvitation()} className="w-full py-3 rounded-md border border-amber-500/40 hover:border-amber-400 text-amber-200 font-semibold text-sm disabled:opacity-50">
+                    {submitting ? 'Encerrando sessão...' : 'Sair e continuar com o convite'}
+                  </button>
+                </div>
+              ) : invitation.requiresExistingAccountLogin && !sessionMatchesInvitation ? (
                 <form onSubmit={loginAndAccept} className="space-y-4">
                   <div>
                     <h2 className="font-semibold text-white flex items-center gap-2"><LogIn className="w-4 h-4 text-emerald-400" />Entre na conta existente</h2>
@@ -182,7 +215,7 @@ export default function InvitationAcceptance({ token }: { token: string }) {
                     <label className="text-xs text-zinc-400">Nome completo<input required value={name} onChange={event => setName(event.target.value)} className="mt-1.5 w-full p-3 rounded-md bg-zinc-950 border border-zinc-700 text-sm text-white" /></label>
                     <label className="text-xs text-zinc-400">Telefone<input value={phone} onChange={event => setPhone(event.target.value)} className="mt-1.5 w-full p-3 rounded-md bg-zinc-950 border border-zinc-700 text-sm text-white" /></label>
                   </div>
-                  {!sessionActive && (
+                  {!sessionMatchesInvitation && (
                     <label className="text-xs text-zinc-400">Crie uma senha
                       <span className="relative block mt-1.5"><KeyRound className="absolute left-3 top-3.5 w-4 h-4 text-zinc-600" /><input type="password" minLength={10} required value={password} onChange={event => setPassword(event.target.value)} placeholder="Mínimo de 10 caracteres" className="w-full pl-10 pr-3 py-3 rounded-md bg-zinc-950 border border-zinc-700 text-sm text-white" /></span>
                     </label>
