@@ -6,6 +6,7 @@ import {
   isApprovedPlatformAdminEmail,
   PLATFORM_ADMIN_EMAILS,
 } from '../server/services/system-admin';
+import { authDescription } from '../src/utils/authPresentation';
 
 function mockResponse() {
   const state = { statusCode: 200, payload: undefined as unknown };
@@ -34,6 +35,14 @@ assert.strictEqual(isApprovedPlatformAdminEmail('sindico@gcv.com.br'), false);
 assert.strictEqual(hasPlatformAdminAccess({ email: 'cassianomarins@gmail.com', isSystemAdmin: true }), true);
 assert.strictEqual(hasPlatformAdminAccess({ email: 'cassianomarins@gmail.com', isSystemAdmin: false }), false);
 assert.strictEqual(hasPlatformAdminAccess({ email: 'attacker@example.com', isSystemAdmin: true }), false);
+assert.strictEqual(authDescription({
+  isSystemAdmin: true,
+  memberships: [{ role: 'syndic' }, { role: 'resident' }],
+}), 'Superusuário da Plataforma');
+assert.strictEqual(authDescription({
+  isSystemAdmin: false,
+  memberships: [{ role: 'syndic' }],
+}), 'syndic');
 
 const approvedRequest: any = { user: { isSystemAdmin: true } };
 let approved = false;

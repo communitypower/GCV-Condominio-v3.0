@@ -53,6 +53,7 @@ import AIAssistent from './components/AIAssistent';
 import GitHubIntegration from './components/GitHubIntegration';
 import DataImports from './components/DataImports';
 import InvitationAcceptance from './components/InvitationAcceptance';
+import { authDescription } from './utils/authPresentation';
 import SystemOnboarding from './components/SystemOnboarding';
 import { unitNumberById } from './utils/displayLabels';
 
@@ -72,11 +73,6 @@ const administrativeRoles = new Set(['admin', 'syndic']);
 const staffRoles = new Set(['staff', 'manager', 'council_member', 'accountant', 'doorman', 'vendor']);
 const uiRoleFor = (role?: string): LoggedInUser['role'] =>
   administrativeRoles.has(role || '') ? 'admin' : staffRoles.has(role || '') ? 'staff' : 'resident';
-const authDescription = (user: { isSystemAdmin?: boolean; memberships?: Array<{ role?: string }> }) =>
-  user.isSystemAdmin && !user.memberships?.length
-    ? 'Administrador da Plataforma'
-    : user.memberships?.[0]?.role || 'Morador';
-
 const PRESET_USERS: LoggedInUser[] = [
   {
     name: 'Cassiano Marins',

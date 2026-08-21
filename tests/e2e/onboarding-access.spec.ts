@@ -23,7 +23,7 @@ test.describe('onboarding and scoped access', () => {
     ]) {
       await expect(page.getByTestId(`nav-${menu}`)).toBeVisible();
     }
-    await expect(page.getByTestId('profile-description')).toHaveText(/Administrador da Plataforma/i);
+    await expect(page.getByTestId('profile-description')).toHaveText(/Superusuário da Plataforma/i);
     await expect(page.getByText(/Recarregar Dados/i)).toBeVisible();
     await page.getByTestId('nav-onboarding').click();
     await expect(page.getByRole('heading', { name: 'Onboarding de condomínio' })).toBeVisible();
