@@ -20,6 +20,7 @@ const createResidentSchema = z.object({
 const staffRoles = [
   PlatformRole.admin,
   PlatformRole.syndic,
+  PlatformRole.staff,
   PlatformRole.manager,
   PlatformRole.council_member,
   PlatformRole.accountant,
@@ -27,7 +28,7 @@ const staffRoles = [
   PlatformRole.vendor,
 ];
 
-router.get('/:condoId/team', requireAuth, tenantGuard, requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]), async (req: any, res) => {
+router.get('/:condoId/team', requireAuth, tenantGuard, requireRole([PlatformRole.syndic]), async (req: any, res) => {
   try {
     const accountId = req.authorizationContext?.accountId;
     const memberships = await prisma.membership.findMany({
@@ -57,7 +58,7 @@ router.get('/:condoId/team', requireAuth, tenantGuard, requireRole([PlatformRole
 router.get('/:condoId/residents', requireAuth, tenantGuard, async (req: any, res) => {
   const { condoId } = req.params;
   try {
-    const staffRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager];
+    const staffRoles = [PlatformRole.syndic, PlatformRole.manager];
     const isStaff = req.authorizationContext.memberships.some((membership: any) =>
       staffRoles.includes(membership.role)
     );
@@ -84,7 +85,7 @@ router.post(
   '/:condoId/residents',
   requireAuth,
   tenantGuard,
-  requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  requireRole([PlatformRole.syndic]),
   validateBody(createResidentSchema),
   async (req: any, res) => {
     const { condoId } = req.params;

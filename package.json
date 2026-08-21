@@ -24,7 +24,7 @@
     "test:data-safety": "TMPDIR=/tmp tsx tests/imports_route_safety.ts && TMPDIR=/tmp tsx tests/documents_route_safety.ts",
     "test:oauth": "TMPDIR=/tmp tsx tests/oauth_flows.ts",
     "test:csrf": "TMPDIR=/tmp tsx tests/csrf_guard.ts",
-    "test:access": "TMPDIR=/tmp tsx tests/invitation_access_lifecycle.ts",
+    "test:access": "TMPDIR=/tmp tsx tests/platform_authorization.ts && TMPDIR=/tmp tsx tests/invitation_access_lifecycle.ts",
     "test:api": "npm run test:api:auth && npm run test:api:documents && npm run test:api:operations && npm run test:api:flags && npm run test:api:observability",
     "test:api:auth": "TMPDIR=/tmp tsx tests/auth_tenant_isolation.ts",
     "test:api:documents": "TMPDIR=/tmp tsx tests/document_acl.ts",

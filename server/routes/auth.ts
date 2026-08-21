@@ -3,7 +3,7 @@ import { AuditAction, MembershipStatus, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import * as openid from 'openid-client';
 import { webcrypto } from 'node:crypto';
-import { isConfiguredSystemAdmin } from '../services/system-admin';
+import { hasPlatformAdminAccess, isApprovedPlatformAdminEmail } from '../services/system-admin';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -37,7 +37,7 @@ function getAllowedBetaEmails() {
 async function isEnvironmentAccessAllowed(email: string) {
   if (!isProductionLike()) return true;
   const normalizedEmail = email.trim().toLowerCase();
-  if (getAllowedBetaEmails().has(normalizedEmail) || isConfiguredSystemAdmin(normalizedEmail)) return true;
+  if (getAllowedBetaEmails().has(normalizedEmail) || isApprovedPlatformAdminEmail(normalizedEmail)) return true;
 
   const user = await prisma.user.findFirst({
     where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
@@ -50,7 +50,7 @@ async function isEnvironmentAccessAllowed(email: string) {
       },
     },
   });
-  return Boolean(user?.isSystemAdmin || user?.memberships.length);
+  return Boolean(user?.memberships.length);
 }
 
 function escapeHtml(value: string) {
@@ -83,7 +83,7 @@ function toAuthUserPayload(user: {
     id: user.id,
     email: user.email,
     name: user.person?.name || fallbackName,
-    isSystemAdmin: user.isSystemAdmin || isConfiguredSystemAdmin(user.email),
+    isSystemAdmin: hasPlatformAdminAccess(user),
     memberships: user.memberships.filter(
       (membership) => membership.status === MembershipStatus.active
     ),

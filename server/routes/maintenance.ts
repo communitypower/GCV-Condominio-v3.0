@@ -36,6 +36,7 @@ const commentSchema = z.object({
 const staffRoles = [
   PlatformRole.admin,
   PlatformRole.syndic,
+  PlatformRole.staff,
   PlatformRole.manager,
   PlatformRole.council_member,
   PlatformRole.accountant,
@@ -148,7 +149,7 @@ router.patch(
   '/:condoId/tickets/:ticketId',
   requireAuth,
   tenantGuard,
-  requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
+  requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.staff]),
   validateBody(updateTicketSchema),
   async (req: any, res) => {
     const { ticketId } = req.params;

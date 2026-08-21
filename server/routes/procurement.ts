@@ -6,7 +6,7 @@ import { validateBody } from '../middleware/validation';
 
 const router = Router();
 const prisma = new PrismaClient();
-const manageRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager];
+const manageRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.staff];
 const decideRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.council_member];
 const readRoles = [...decideRoles, PlatformRole.accountant];
 

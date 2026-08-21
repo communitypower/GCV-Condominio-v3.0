@@ -6,7 +6,7 @@ import { validateBody } from '../middleware/validation';
 
 const router = Router();
 const prisma = new PrismaClient();
-const publishRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager];
+const publishRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager, PlatformRole.staff];
 const announcementTypeSchema = z.enum(AnnouncementType);
 const announcementFields = z.object({
   title: z.string().trim().min(1).max(160),

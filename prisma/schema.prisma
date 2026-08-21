@@ -29,6 +29,7 @@ enum RelationshipRole {
 enum PlatformRole {
   admin
   syndic
+  staff
   manager
   council_member
   accountant

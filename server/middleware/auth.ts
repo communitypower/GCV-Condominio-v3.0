@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { MembershipStatus, PrismaClient, PlatformRole } from '@prisma/client';
-import { isConfiguredSystemAdmin } from '../services/system-admin';
+import { hasPlatformAdminAccess } from '../services/system-admin';
 
 const prisma = new PrismaClient();
 
@@ -64,7 +64,7 @@ export const requireAuth = async (req: AuthenticatedRequest, res: Response, next
     req.user = {
       id: user.id,
       email: user.email,
-      isSystemAdmin: user.isSystemAdmin || isConfiguredSystemAdmin(user.email),
+      isSystemAdmin: hasPlatformAdminAccess(user),
       memberships: user.memberships
         .filter((m) => m.status === MembershipStatus.active)
         .map((m) => ({
@@ -107,9 +107,7 @@ export const requireRole = (roles: PlatformRole[]) => {
     }
 
     const scopedMemberships = req.authorizationContext?.memberships ?? req.user.memberships;
-    const hasRole = scopedMemberships.some(
-      (membership) => membership.role === PlatformRole.admin || roles.includes(membership.role)
-    );
+    const hasRole = scopedMemberships.some((membership) => roles.includes(membership.role));
     if (!hasRole) {
       return res.status(403).json({ error: "Acesso negado: permissões insuficientes." });
     }

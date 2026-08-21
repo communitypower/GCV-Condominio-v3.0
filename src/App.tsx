@@ -69,7 +69,7 @@ interface LoggedInUser {
 }
 
 const administrativeRoles = new Set(['admin', 'syndic']);
-const staffRoles = new Set(['manager', 'council_member', 'accountant', 'doorman', 'vendor']);
+const staffRoles = new Set(['staff', 'manager', 'council_member', 'accountant', 'doorman', 'vendor']);
 const uiRoleFor = (role?: string): LoggedInUser['role'] =>
   administrativeRoles.has(role || '') ? 'admin' : staffRoles.has(role || '') ? 'staff' : 'resident';
 
@@ -229,9 +229,15 @@ export default function App() {
   const activeMembership = user?.memberships?.find((membership: any) =>
     membership.condominiumId === activeEdificioId
   ) || user?.memberships?.find((membership: any) => membership.condominiumId === null) || user?.memberships?.[0];
-  const currentRole = uiRoleFor(activeMembership?.role);
-  const isResident = currentRole === 'resident';
-  const canAdminister = currentRole === 'admin';
+  const platformRole = activeMembership?.role as string | undefined;
+  const currentRole = uiRoleFor(platformRole);
+  const isPlatformOnlyAdmin = Boolean(user?.isSystemAdmin && !activeMembership);
+  const isResident = !isPlatformOnlyAdmin && currentRole === 'resident';
+  const canAdminister = platformRole === 'syndic';
+  const canViewFinance = platformRole === 'syndic' || platformRole === 'accountant';
+  const canManageResidents = platformRole === 'syndic';
+  const canManageData = platformRole === 'syndic';
+  const canManageAnnouncements = ['syndic', 'manager', 'staff'].includes(platformRole || '');
   const residentUnit = units[0];
 
   useEffect(() => {
@@ -1503,7 +1509,7 @@ export default function App() {
         {/* Mobile menu panel overlay */}
         {mobileMenuOpen && (
           <div className="bg-[#14161A] border-t border-slate-800/60 font-semibold px-4 pt-2 pb-4 space-y-2 text-xs max-h-[80vh] overflow-y-auto">
-            {isResident ? (
+            {!isPlatformOnlyAdmin && (isResident ? (
               <>
                 <button onClick={() => { setActiveTab('dashboard'); setMobileMenuOpen(false); }} className={navBtnStyle('dashboard')}>Portal do Morador</button>
                 <button onClick={() => { setActiveTab('ia_assistant'); setMobileMenuOpen(false); }} className={navBtnStyle('ia_assistant')}>Assistente IA Copilot ✨</button>
@@ -1520,19 +1526,25 @@ export default function App() {
                 <button onClick={() => { setActiveTab('ordens'); setMobileMenuOpen(false); }} className={navBtnStyle('ordens')}>Ordens de Serviço ({maintenanceRequests.length})</button>
                 <button onClick={() => { setActiveTab('logs'); setMobileMenuOpen(false); }} className={navBtnStyle('logs')}>Logs de Operação</button>
                 
-                {canAdminister && (
+                {canViewFinance && (
                   <>
                     <button onClick={() => { setActiveTab('cobrancas'); setMobileMenuOpen(false); }} className={navBtnStyle('cobrancas')}>Cobranças</button>
                     <button onClick={() => { setActiveTab('pagamentos'); setMobileMenuOpen(false); }} className={navBtnStyle('pagamentos')}>Contas a Pagar</button>
                     <button onClick={() => { setActiveTab('demonstrativos'); setMobileMenuOpen(false); }} className={navBtnStyle('demonstrativos')}>Demonstrativos DRE</button>
+                  </>
+                )}
+                {canManageResidents && (
+                  <>
                     <button onClick={() => { setActiveTab('condominos'); setMobileMenuOpen(false); }} className={navBtnStyle('condominos')}>Fichas Moradores</button>
                     <button onClick={() => { setActiveTab('usuarios'); setMobileMenuOpen(false); }} className={navBtnStyle('usuarios')}>Corpo Diretivo</button>
-                    <button onClick={() => { setActiveTab('github'); setMobileMenuOpen(false); }} className={navBtnStyle('github')}>Integração GitHub</button>
                   </>
+                )}
+                {canAdminister && (
+                    <button onClick={() => { setActiveTab('github'); setMobileMenuOpen(false); }} className={navBtnStyle('github')}>Integração GitHub</button>
                 )}
                 <button onClick={() => { setActiveTab('notificacoes'); setMobileMenuOpen(false); }} className={navBtnStyle('notificacoes')}>Avisos & Mural</button>
               </>
-            )}
+            ))}
             {user.isSystemAdmin && (
               <button onClick={() => { setActiveTab('onboarding'); setMobileMenuOpen(false); }} className={navBtnStyle('onboarding')}>
                 Administração da Plataforma
@@ -1559,7 +1571,7 @@ export default function App() {
           </div>
 
           {/* BUILDING SWITCHER CARD */}
-          <div className="bg-zinc-950/70 border border-zinc-850 p-3 rounded-xl space-y-2">
+          {!isPlatformOnlyAdmin && <div className="bg-zinc-950/70 border border-zinc-850 p-3 rounded-xl space-y-2">
             <span className="text-[8px] text-[#10b981] font-bold tracking-widest uppercase block">Edifício Ativo</span>
             
             <div className="flex items-center gap-2">
@@ -1589,13 +1601,20 @@ export default function App() {
                 </p>
               </div>
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Sidebar grouped navigational menu */}
         <div className="flex-1 px-4 space-y-4 pb-6 select-none text-[10px] font-bold text-zinc-500 tracking-wider">
           
-          {isResident ? (
+          {isPlatformOnlyAdmin ? (
+            <div className="space-y-1 pt-2">
+              <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">PLATAFORMA</span>
+              <button data-testid="nav-onboarding" onClick={() => setActiveTab('onboarding')} className={navBtnStyle('onboarding')}>
+                <ShieldCheck className="w-3.5 h-3.5" /> Onboarding
+              </button>
+            </div>
+          ) : isResident ? (
             /* RESTRICTED MORADOR SIDEBAR */
             <div className="space-y-1">
               <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">PORTAL DO MORADOR</span>
@@ -1666,7 +1685,7 @@ export default function App() {
               </div>
 
               {/* Group 4: FINANCEIRO (Hidden for staff) */}
-              {canAdminister && (
+              {canViewFinance && (
                 <div className="space-y-1">
                   <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">FINANCEIRO</span>
                   <button data-testid="nav-cobrancas" onClick={() => setActiveTab('cobrancas')} className={navBtnStyle('cobrancas')}>
@@ -1684,7 +1703,7 @@ export default function App() {
               {/* Group 5: CONDOMÍNIO */}
               <div className="space-y-1">
                 <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">CONDOMÍNIO</span>
-                {canAdminister && (
+                {canManageResidents && (
                   <button data-testid="nav-condominos" onClick={() => setActiveTab('condominos')} className={navBtnStyle('condominos')}>
                     <Users className="w-3.5 h-3.5" /> Fichas Moradores
                   </button>
@@ -1695,12 +1714,12 @@ export default function App() {
                 <button data-testid="nav-notificacoes" onClick={() => setActiveTab('notificacoes')} className={navBtnStyle('notificacoes')}>
                   <Bell className="w-3.5 h-3.5" /> Mural de Avisos
                 </button>
-                {canAdminister && (
+                {canManageResidents && (
                   <button data-testid="nav-usuarios" onClick={() => setActiveTab('usuarios')} className={navBtnStyle('usuarios')}>
                     <Users className="w-3.5 h-3.5" /> Corpo Diretivo / Staff
                   </button>
                 )}
-                {!isResident && (
+                {canManageData && (
                   <button data-testid="nav-carga-dados" onClick={() => setActiveTab('carga_dados')} className={navBtnStyle('carga_dados')}>
                     <Database className="w-3.5 h-3.5" /> Carga de Dados
                   </button>
@@ -1996,7 +2015,7 @@ export default function App() {
           )}
 
           {activeTab === 'notificacoes' && (
-            <Notifications condoId={activeEdificioId} canManage={!isResident} />
+            <Notifications condoId={activeEdificioId} canManage={canManageAnnouncements} />
           )}
 
           {activeTab === 'usuarios' && (

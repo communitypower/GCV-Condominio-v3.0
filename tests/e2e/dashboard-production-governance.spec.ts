@@ -138,7 +138,7 @@ test('production API supports full test-data lifecycle for buildings, units, pla
       role: 'owner',
     },
   });
-  await expectStatus(resident, 201);
+  await expectStatus(resident, 202);
 
   const equipment = await request.post(`${baseURL}/api/v1/condominiums/${condo.id}/equipment`, {
     headers: { origin: baseURL },

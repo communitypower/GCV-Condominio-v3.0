@@ -1,8 +1,14 @@
-export function isConfiguredSystemAdmin(email: string) {
-  const normalizedEmail = email.trim().toLowerCase();
-  return (process.env.SYSTEM_ADMIN_EMAILS || '')
-    .split(/[\s,;]+/)
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean)
-    .includes(normalizedEmail);
+export const PLATFORM_ADMIN_EMAILS = [
+  'cassianomarins@gmail.com',
+  'vitorlcastro92@gmail.com',
+] as const;
+
+const platformAdminEmailSet = new Set<string>(PLATFORM_ADMIN_EMAILS);
+
+export function isApprovedPlatformAdminEmail(email: string) {
+  return platformAdminEmailSet.has(email.trim().toLowerCase());
+}
+
+export function hasPlatformAdminAccess(user: { email: string; isSystemAdmin: boolean }) {
+  return user.isSystemAdmin && isApprovedPlatformAdminEmail(user.email);
 }

@@ -28,6 +28,7 @@ const createdEmails = [
   `${marker}_cancel@example.com`,
   `${marker}_syndic@example.com`,
   `${marker}_admin@example.com`,
+  `${marker}_expired@example.com`,
 ];
 let authServer: ReturnType<express.Express['listen']> | null = null;
 let authBaseUrl = '';
@@ -281,6 +282,28 @@ async function run() {
     InvitationStatus.cancelled
   );
 
+  const expired = await createInvitation(prisma, {
+    accountId: condominium.accountId,
+    condominiumId: condominium.id,
+    unitId: unit.id,
+    email: createdEmails[4],
+    name: `${marker} expired`,
+    role: PlatformRole.resident,
+    relationshipRole: RelationshipRole.dependent,
+    invitedById: actor.id,
+    invitedByEmail: actor.email,
+  });
+  const expiredToken = tokenFromDelivery(expired.delivery);
+  await prisma.invitation.update({
+    where: { id: expired.invitation.id },
+    data: { expiresAt: new Date(Date.now() - 1_000) },
+  });
+  await assert.rejects(() => inspectInvitation(prisma, expiredToken), /Convite expirado/);
+  assert.strictEqual(
+    (await prisma.invitation.findUniqueOrThrow({ where: { id: expired.invitation.id } })).status,
+    InvitationStatus.expired
+  );
+
   const existing = await createInvitation(prisma, {
     accountId: condominium.accountId,
     condominiumId: condominium.id,
@@ -319,8 +342,20 @@ async function run() {
     body: JSON.stringify({ email: admin.email }),
   });
   const adminPayload = await adminLogin.json() as any;
-  assert.strictEqual(adminPayload.user.isSystemAdmin, true);
+  assert.strictEqual(
+    adminPayload.user.isSystemAdmin,
+    false,
+    'A database flag must not authorize an email outside the approved platform-admin list'
+  );
   assert.deepStrictEqual(adminPayload.user.memberships, []);
+  const approvedAdminLogin = await fetch(`${authBaseUrl}/mock-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'vitorlcastro92@gmail.com' }),
+  });
+  const approvedAdminPayload = await approvedAdminLogin.json() as any;
+  assert.strictEqual(approvedAdminPayload.user.isSystemAdmin, true);
+  assert.deepStrictEqual(approvedAdminPayload.user.memberships, []);
   const onboarding = await onboardCondominium(prisma, {
     accountName: `${marker} account`,
     condominiumName: `${marker} condominium`,

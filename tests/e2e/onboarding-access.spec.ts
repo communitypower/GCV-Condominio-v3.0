@@ -9,10 +9,13 @@ test.describe('onboarding and scoped access', () => {
     const pageErrors: string[] = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.goto('/');
-    await page.getByTestId('login-email').fill('sindico@gcv.com.br');
-    await page.getByTestId('login-password').fill('sindico123');
+    await page.getByTestId('login-email').fill('vitorlcastro92@gmail.com');
+    await page.getByTestId('login-password').fill('platform-admin-local-123');
     await page.getByTestId('login-submit').click();
 
+    await expect(page.getByTestId('nav-onboarding')).toBeVisible();
+    await expect(page.getByTestId('active-building-selector')).toHaveCount(0);
+    await expect(page.getByTestId('nav-dashboard')).toHaveCount(0);
     await page.getByTestId('nav-onboarding').click();
     await expect(page.getByRole('heading', { name: 'Onboarding de condomínio' })).toBeVisible();
     await expect(page.getByText('Administração do sistema', { exact: true })).toBeVisible();

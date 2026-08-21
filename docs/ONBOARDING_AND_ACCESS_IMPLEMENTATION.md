@@ -8,17 +8,24 @@ Este documento descreve o fluxo implementado para entrada de condomínios, sínd
 
 ### Administrador do sistema
 
-- Identificado por `User.isSystemAdmin` ou, para bootstrap operacional, por `SYSTEM_ADMIN_EMAILS`.
+- O acesso exige simultaneamente `User.isSystemAdmin=true` e um e-mail aprovado no código.
+- Os únicos administradores aprovados são `cassianomarins@gmail.com` e `vitorlcastro92@gmail.com`.
 - Cria conta, condomínio e primeiro vínculo do síndico em uma transação.
 - Não recebe automaticamente acesso aos dados operacionais do cliente.
 - A operação gera convite e eventos de auditoria vinculados à nova conta e condomínio.
 
-### Síndico e administração do condomínio
+### Síndico
 
-- Gerenciam blocos, unidades, moradores e convites somente no condomínio autorizado.
-- Podem criar, reenviar e cancelar convites.
-- Podem revogar um acesso ativo, encerrando também o vínculo com a unidade.
+- Gerencia blocos, unidades, moradores e convites somente no condomínio autorizado.
+- Pode criar, reenviar e cancelar convites de moradores.
+- Pode revogar um acesso ativo, encerrando também o vínculo com a unidade.
 - Importações de moradores usam o mesmo lifecycle de convite do cadastro individual.
+- Não cria condomínios nem convida outros síndicos.
+
+### Staff
+
+- Atua somente no condomínio associado e nas rotinas operacionais explicitamente liberadas.
+- Não administra moradores, importações, memberships ou convites.
 
 ### Morador
 
@@ -57,6 +64,8 @@ Este documento descreve o fluxo implementado para entrada de condomínios, sínd
 - O banco valida que `Membership.accountId` corresponde ao condomínio informado.
 - Relacionamentos ativos duplicados e memberships duplicadas no escopo da conta são bloqueados.
 - Papéis são avaliados no condomínio ativo; um papel administrativo em outro tenant não concede privilégios.
+- Acesso de administrador da plataforma não substitui uma membership operacional.
+- A flag `isSystemAdmin` isolada não concede acesso administrativo a outro e-mail.
 - Endpoints E2E retornam `404` em produção, independentemente da feature flag.
 
 ## Entrega de convites
@@ -72,15 +81,31 @@ INVITATION_EMAIL_WEBHOOK_TOKEN=<segredo>
 
 O webhook recebe o destinatário, nome, identificador do convite e URL de aceite. O token do webhook e o hash do convite nunca são enviados ao frontend.
 
-## Bootstrap do administrador
+## Provisionamento dos administradores
 
-No Railway, configure:
+O migration e o seed provisionam de forma idempotente os dois administradores aprovados. Todos os demais usuários são mantidos com `isSystemAdmin=false`. Não existe variável Railway capaz de promover outro e-mail.
+
+Para login por senha exclusivamente no ambiente local, defina antes de executar o seed:
 
 ```env
-SYSTEM_ADMIN_EMAILS=administrador@empresa.com
+SEED_PLATFORM_ADMIN_PASSWORD=<senha-local-com-pelo-menos-10-caracteres>
 ```
 
-Após o primeiro acesso, a tela **Plataforma > Onboarding** permite criar o cliente e convidar o síndico. A coluna `User.isSystemAdmin` pode posteriormente ser usada como fonte permanente, removendo o e-mail da variável de bootstrap.
+Essa senha não deve ser configurada no Railway. Em QA e produção, os administradores usam OAuth. Após o primeiro acesso, a tela **Plataforma > Onboarding** permite criar o cliente e convidar o síndico.
+
+## Matriz de autorização
+
+| Capacidade | Administrador da plataforma | Síndico | Staff | Morador |
+| --- | --- | --- | --- | --- |
+| Criar conta, condomínio e convite de síndico | Sim | Não | Não | Não |
+| Acessar dados operacionais sem membership | Não | Não | Não | Não |
+| Gerenciar blocos e unidades | Não | Sim | Conforme permissão operacional | Não |
+| Cadastrar/importar moradores | Não | Sim | Não | Não |
+| Gerenciar convites de moradores | Não | Sim | Não | Não |
+| Operar manutenção | Não | Sim | Sim | Abrir/acompanhar chamados próprios |
+| Acessar dados de outra unidade ou condomínio | Não | Não | Não | Não |
+
+Papéis legados mais específicos (`manager`, `accountant`, `doorman`, `council_member` e `vendor`) permanecem disponíveis apenas nas rotinas explicitamente listadas no backend. O papel legado `admin` não herda permissões de `syndic`.
 
 ## APIs principais
 

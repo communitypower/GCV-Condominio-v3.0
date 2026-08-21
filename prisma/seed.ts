@@ -2,10 +2,63 @@ import { PrismaClient, UnitType, UnitStatus, RelationshipRole, PlatformRole, Equ
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
+const platformAdmins = [
+  {
+    id: '4ded9a85-0dc9-477e-809b-1588c22d632d',
+    personId: 'b9ec93ab-4072-4fef-a03c-94631e7877a1',
+    name: 'Cassiano Marins',
+    email: 'cassianomarins@gmail.com',
+  },
+  {
+    id: '30984b5a-3ddb-4d9f-bf43-a314831f5ec2',
+    personId: 'f1f80cc1-d76f-4012-9e26-dd4f57bf4a3b',
+    name: 'Vitor Castro',
+    email: 'vitorlcastro92@gmail.com',
+  },
+];
+
+async function ensurePlatformAdmins() {
+  const localPassword = process.env.SEED_PLATFORM_ADMIN_PASSWORD?.trim();
+  const passwordHash = localPassword ? bcrypt.hashSync(localPassword, 12) : undefined;
+
+  await prisma.user.updateMany({
+    where: { email: { notIn: platformAdmins.map((admin) => admin.email) } },
+    data: { isSystemAdmin: false },
+  });
+
+  for (const admin of platformAdmins) {
+    const person = await prisma.person.upsert({
+      where: { email: admin.email },
+      update: { name: admin.name },
+      create: {
+        id: admin.personId,
+        name: admin.name,
+        email: admin.email,
+        phone: '',
+      },
+    });
+    await prisma.user.upsert({
+      where: { email: admin.email },
+      update: {
+        personId: person.id,
+        isSystemAdmin: true,
+        ...(passwordHash ? { passwordHash } : {}),
+      },
+      create: {
+        id: admin.id,
+        email: admin.email,
+        personId: person.id,
+        isSystemAdmin: true,
+        passwordHash,
+      },
+    });
+  }
+}
 
 async function main() {
-  const userCount = await prisma.user.count();
-  if (userCount > 0) {
+  await ensurePlatformAdmins();
+  const accountCount = await prisma.account.count();
+  if (accountCount > 0) {
     console.log("Database already seeded. Skipping cleaning and seeding.");
     return;
   }
@@ -33,22 +86,6 @@ async function main() {
   await prisma.user.deleteMany();
   await prisma.person.deleteMany();
   await prisma.account.deleteMany();
-
-  const systemAdminPerson = await prisma.person.create({
-    data: {
-      name: "Administrador do Sistema GCV",
-      email: "system.admin@gcv.com.br",
-      phone: "",
-    },
-  });
-  await prisma.user.create({
-    data: {
-      email: systemAdminPerson.email,
-      passwordHash: bcrypt.hashSync("system-admin-local-123", 12),
-      personId: systemAdminPerson.id,
-      isSystemAdmin: true,
-    },
-  });
 
   // 1. Create Default Account
   const account = await prisma.account.create({

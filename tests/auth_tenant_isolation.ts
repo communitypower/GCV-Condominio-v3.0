@@ -89,6 +89,57 @@ async function runTests() {
     assert.ok(!condos.some((condo) => condo.id === foreignCondoId), "Condominium list must not include another tenant");
     console.log(`✔ Scoped access allowed. Found condominium: ${condos[0].name} (${condoId})`);
 
+    const syndicCreateCondoRes = await fetch(`${BASE_URL}/condominiums`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        name: 'Condomínio indevido',
+        address: 'Rua sem autorização, 1',
+        accountId: condos[0].accountId,
+      }),
+    });
+    assert.strictEqual(
+      syndicCreateCondoRes.status,
+      403,
+      'Syndic must not create condominiums through the platform-only endpoint'
+    );
+
+    const privilegedInvitationRes = await fetch(`${BASE_URL}/condominiums/${condoId}/invitations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        email: `unauthorized-syndic-${Date.now()}@example.com`,
+        name: 'Unauthorized Syndic',
+        role: PlatformRole.syndic,
+      }),
+    });
+    assert.strictEqual(
+      privilegedInvitationRes.status,
+      400,
+      'Tenant invitation endpoint must accept resident invitations only'
+    );
+
+    const managerLogin = await fetch(`${BASE_URL}/auth/mock-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'zelador@gcv.com.br' }),
+    });
+    assert.strictEqual(managerLogin.status, 200);
+    const managerCookie = managerLogin.headers.get('set-cookie')!;
+    const managerResidentInvite = await fetch(`${BASE_URL}/condominiums/${condoId}/residents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: managerCookie },
+      body: JSON.stringify({
+        name: 'Convite não autorizado',
+        email: `manager-invite-${Date.now()}@example.com`,
+        phone: '11999999999',
+        unitId: '00000000-0000-0000-0000-000000000000',
+        role: RelationshipRole.tenant,
+      }),
+    });
+    assert.strictEqual(managerResidentInvite.status, 403, 'Manager must not onboard residents');
+    console.log('✔ Condominium and resident onboarding privileges are separated');
+
     const foreignAdminEmail = `foreign-admin-${Date.now()}@example.com`;
     const foreignAdminPerson = await prisma.person.create({
       data: { name: 'Foreign Admin', email: foreignAdminEmail, phone: '000000000' },

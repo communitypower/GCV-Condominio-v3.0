@@ -14,14 +14,14 @@ import { PrismaClient } from '@prisma/client';
 
 const router = Router();
 const prisma = new PrismaClient();
-const manageRoles = [PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager];
+const manageRoles = [PlatformRole.syndic];
 
 const createSchema = z.object({
   email: z.string().trim().email().max(254),
   name: z.string().trim().min(1).max(160),
   phone: z.string().trim().max(40).optional(),
   unitId: z.string().uuid().optional(),
-  role: z.enum(PlatformRole).default(PlatformRole.resident),
+  role: z.literal(PlatformRole.resident).default(PlatformRole.resident),
   relationshipRole: z.enum(RelationshipRole).optional(),
   expiresInHours: z.number().int().min(1).max(720).optional(),
 });
@@ -114,7 +114,7 @@ for (const action of ['cancel', 'revoke'] as const) {
   );
 }
 
-router.get('/:condoId/invitations/statuses', (_req, res) => {
+router.get('/:condoId/invitations/statuses', requireAuth, tenantGuard, requireRole(manageRoles), (_req, res) => {
   res.json(Object.values(InvitationStatus));
 });
 

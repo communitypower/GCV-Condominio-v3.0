@@ -184,7 +184,7 @@ async function applyRecord(db: DbClient, condoId: string, entity: DataImportEnti
   });
 }
 
-router.get('/:condoId/imports', requireAuth, tenantGuard, requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]), async (req, res) => {
+router.get('/:condoId/imports', requireAuth, tenantGuard, requireRole([PlatformRole.syndic]), async (req, res) => {
   const jobs = await prisma.dataImportJob.findMany({
     where: { condominiumId: req.params.condoId },
     select: { id: true, source: true, entity: true, fileName: true, status: true, totalRows: true, validRows: true, invalidRows: true, result: true, createdByEmail: true, createdAt: true, completedAt: true },
@@ -208,7 +208,7 @@ export function recordReference(entity: DataImportEntity, record: ImportRecord) 
   return values.length ? values.join(' / ').slice(0, 240) : 'sem referência';
 }
 
-router.post('/:condoId/imports/validate', requireAuth, tenantGuard, requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]), validateBody(createImportSchema), async (req: any, res) => {
+router.post('/:condoId/imports/validate', requireAuth, tenantGuard, requireRole([PlatformRole.syndic]), validateBody(createImportSchema), async (req: any, res) => {
   const { source, entity, fileName, records } = req.body;
   const structuralIssues = records.flatMap((record: ImportRecord, index: number) => validateRecord(entity, record, index + 2));
   const referenceIssues = await validateReferences(req.params.condoId, entity, records);
@@ -232,7 +232,7 @@ router.post('/:condoId/imports/validate', requireAuth, tenantGuard, requireRole(
   res.status(201).json({ id: job.id, status: job.status, totalRows: records.length, validRows: records.length - invalidRows, invalidRows, issues: issues.slice(0, 200) });
 });
 
-router.post('/:condoId/imports/:importId/apply', requireAuth, tenantGuard, requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]), async (req: any, res) => {
+router.post('/:condoId/imports/:importId/apply', requireAuth, tenantGuard, requireRole([PlatformRole.syndic]), async (req: any, res) => {
   await prisma.dataImportJob.updateMany({
     where: {
       id: req.params.importId,

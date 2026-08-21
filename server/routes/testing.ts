@@ -196,8 +196,6 @@ router.post('/cleanup', async (req, res) => {
     select: { id: true },
   });
   const unitIds = units.map((unit) => unit.id);
-  results.unitRelationships = (await prisma.unitRelationship.deleteMany({ where: { unitId: { in: unitIds } } })).count;
-  results.units = (await prisma.unit.deleteMany({ where: { id: { in: unitIds } } })).count;
 
   const testUsers = await prisma.user.findMany({
     where: {
@@ -208,6 +206,27 @@ router.post('/cleanup', async (req, res) => {
   });
   const testUserIds = testUsers.map((user) => user.id);
   const testPersonIds = testUsers.flatMap((user) => user.personId ? [user.personId] : []);
+  const invitations = await prisma.invitation.findMany({
+    where: {
+      condominiumId,
+      OR: [
+        { emailNormalized: { startsWith: 'test_e2e_' } },
+        { invitedName: { startsWith: TEST_PREFIX } },
+        { unitId: { in: unitIds } },
+      ],
+    },
+    select: { id: true },
+  });
+  const invitationIds = invitations.map((invitation) => invitation.id);
+  results.invitations = (await prisma.invitation.deleteMany({ where: { id: { in: invitationIds } } })).count;
+  results.unitRelationships = (await prisma.unitRelationship.deleteMany({
+    where: {
+      OR: [
+        { unitId: { in: unitIds } },
+        { personId: { in: testPersonIds } },
+      ],
+    },
+  })).count;
   results.memberships = (await prisma.membership.deleteMany({
     where: { userId: { in: testUserIds }, condominiumId },
   })).count;
@@ -221,6 +240,7 @@ router.post('/cleanup', async (req, res) => {
       relationships: { none: {} },
     },
   })).count;
+  results.units = (await prisma.unit.deleteMany({ where: { id: { in: unitIds } } })).count;
 
   results.buildings = (await prisma.building.deleteMany({
     where: { condominiumId, name: { startsWith: TEST_PREFIX } },
@@ -231,7 +251,7 @@ router.post('/cleanup', async (req, res) => {
       condominiumId,
       OR: [
         { details: { contains: TEST_PREFIX } },
-        { entityId: { in: [...ticketIds, ...chargeIds, ...documentIds, ...unitIds] } },
+        { entityId: { in: [...ticketIds, ...chargeIds, ...documentIds, ...unitIds, ...invitationIds] } },
       ],
     },
   })).count;

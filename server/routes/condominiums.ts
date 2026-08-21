@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { PrismaClient, PlatformRole } from '@prisma/client';
-import { requireAuth } from '../middleware/auth';
+import { PrismaClient } from '@prisma/client';
+import { requireAuth, requireSystemAdmin } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
 import { z } from 'zod';
 
@@ -40,21 +40,13 @@ router.get('/', requireAuth, async (req: any, res) => {
 });
 
 // POST /api/v1/condominiums
-router.post('/', requireAuth, validateBody(createCondominiumSchema), async (req: any, res) => {
+router.post('/', requireAuth, requireSystemAdmin, validateBody(createCondominiumSchema), async (req: any, res) => {
   const { name, address, accountId } = req.body;
-
-  const canCreateInAccount = req.user.memberships.some(
-    (membership: any) =>
-      membership.accountId === accountId &&
-      membership.condominiumId === null &&
-      membership.role === PlatformRole.admin
-  );
-  if (!canCreateInAccount) {
-    return res.status(403).json({ error: "Acesso negado: papel insuficiente nesta conta." });
-  }
 
   try {
     const condominium = await prisma.$transaction(async (tx) => {
+      const account = await tx.account.findUnique({ where: { id: accountId }, select: { id: true } });
+      if (!account) throw new Error('ACCOUNT_NOT_FOUND');
       const created = await tx.condominium.create({
         data: { name, address, accountId },
       });
@@ -75,6 +67,9 @@ router.post('/', requireAuth, validateBody(createCondominiumSchema), async (req:
     });
     res.status(201).json(condominium);
   } catch (error) {
+    if (error instanceof Error && error.message === 'ACCOUNT_NOT_FOUND') {
+      return res.status(404).json({ error: 'Conta não encontrada.' });
+    }
     console.error("Create Condominium Error:", error);
     res.status(500).json({ error: "Erro ao criar condomínio." });
   }
