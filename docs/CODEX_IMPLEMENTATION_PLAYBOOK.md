@@ -8,6 +8,7 @@ Purpose: define how Codex/GPT should implement GCV SaaS safely, locally first, a
 
 Current execution source of truth:
 
+- `docs/BETA_CLOSURE_EXECUTION_PLAN.md`
 - `docs/PRODUCT_CLOSURE_PLAN.md`
 - `docs/PRODUCT_CLOSURE_STATUS.md`
 - `docs/RAILWAY_OPERATIONS_RUNBOOK.md`
