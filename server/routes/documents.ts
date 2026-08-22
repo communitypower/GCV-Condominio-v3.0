@@ -367,7 +367,7 @@ router.post(
   requireDocumentIngestion,
   uploadDocuments,
   async (req: any, res) => {
-    const files = (req.files || []) as Express.Multer.File[];
+    const files = Array.isArray(req.files) ? req.files as Express.Multer.File[] : [];
     if (files.length === 0) return res.status(400).json({ error: 'Selecione ao menos um arquivo.' });
     const condominiumIdResult = z.string().min(1).max(100).regex(/^[A-Za-z0-9-]+$/).safeParse(
       typeof req.params.condoId === 'string' ? req.params.condoId : undefined

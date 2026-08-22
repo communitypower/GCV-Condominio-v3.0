@@ -27,7 +27,7 @@ export function createCsrfProtection(options: CsrfOptions) {
 
     const requestOrigin = normalizeOrigin(req.get('origin'));
     const hostOrigin = `${req.protocol}://${req.get('host')}`;
-    const allowedOrigins = new Set([configuredOrigin, hostOrigin].filter(Boolean));
+    const allowedOrigins = new Set([configuredOrigin || hostOrigin]);
 
     if (!requestOrigin || !allowedOrigins.has(requestOrigin)) {
       return res.status(403).json({ error: 'Requisição bloqueada por proteção CSRF.' });

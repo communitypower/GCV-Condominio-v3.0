@@ -479,7 +479,10 @@ router.get('/google/login', async (req, res) => {
 
     const redirectUri = oauthCallbackUrl('google');
 
-    res.cookie('gcv_oauth_state', sealOAuthState({ state, codeVerifier }), {
+    const sealedOAuthState = sealOAuthState({ state, codeVerifier });
+    // The PKCE verifier is AES-GCM encrypted before it reaches this cookie sink.
+    // codeql[js/clear-text-storage-of-sensitive-information]
+    res.cookie('gcv_oauth_state', sealedOAuthState, {
       httpOnly: true,
       signed: true,
       secure: isProductionLike(),
