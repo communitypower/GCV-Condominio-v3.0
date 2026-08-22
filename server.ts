@@ -84,11 +84,11 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable("x-powered-by");
 app.use(helmet({
-  contentSecurityPolicy: isProductionLike ? {
+  contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       baseUri: ["'self'"],
-      connectSrc: ["'self'"],
+      connectSrc: isProductionLike ? ["'self'"] : ["'self'", "ws:", "wss:"],
       fontSrc: ["'self'", "data:"],
       formAction: ["'self'"],
       frameAncestors: ["'none'"],
@@ -96,9 +96,9 @@ app.use(helmet({
       objectSrc: ["'none'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      upgradeInsecureRequests: [],
+      upgradeInsecureRequests: isProductionLike ? [] : null,
     },
-  } : false,
+  },
   crossOriginEmbedderPolicy: false,
 }));
 app.use((req, res, next) => {
@@ -129,7 +129,7 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser(process.env.SESSION_SECRET || "gcv_local_secret"));
 app.use(createCsrfProtection({
-  enabled: isProductionLike,
+  enabled: ENVIRONMENT !== "test",
   appUrl: process.env.APP_URL,
 }));
 

@@ -369,6 +369,11 @@ router.post(
   async (req: any, res) => {
     const files = (req.files || []) as Express.Multer.File[];
     if (files.length === 0) return res.status(400).json({ error: 'Selecione ao menos um arquivo.' });
+    const condominiumIdResult = z.string().min(1).max(100).regex(/^[A-Za-z0-9-]+$/).safeParse(
+      typeof req.params.condoId === 'string' ? req.params.condoId : undefined
+    );
+    if (!condominiumIdResult.success) return res.status(400).json({ error: 'Identificador de condomínio inválido.' });
+    const condominiumId = condominiumIdResult.data;
     const totalRequestBytes = files.reduce((total, file) => total + file.size, 0);
     if (totalRequestBytes > documentUploadLimits.maxRequestSizeBytes) {
       return res.status(413).json({ error: 'O conjunto de arquivos excede o limite total por envio.', code: 'REQUEST_TOO_LARGE' });
@@ -378,19 +383,19 @@ router.post(
     const associationResult = documentAssociationsSchema.safeParse(req.body);
     if (!categoryResult.success || !roleResult.success || !associationResult.success) return res.status(400).json({ error: 'Categoria, perfil de acesso ou associação inválida.' });
     try {
-      await validateDocumentAssociations(req.params.condoId, associationResult.data);
+      await validateDocumentAssociations(condominiumId, associationResult.data);
     } catch {
       return res.status(400).json({ error: 'A associação informada não pertence ao condomínio ativo.' });
     }
 
     const condominium = await prisma.condominium.findUnique({
-      where: { id: req.params.condoId },
+      where: { id: condominiumId },
       select: { accountId: true },
     });
     if (!condominium) return res.status(404).json({ error: 'Condomínio não encontrado.' });
 
     try {
-      await assertDocumentUploadQuota(req.params.condoId, totalRequestBytes, files.length);
+      await assertDocumentUploadQuota(condominiumId, totalRequestBytes, files.length);
     } catch (error) {
       const code = error instanceof Error ? error.message : 'UPLOAD_QUOTA_EXCEEDED';
       return res.status(429).json({ error: uploadErrorMessages[code] || 'Cota documental excedida.', code });
@@ -404,7 +409,7 @@ router.post(
         const inspected = await inspectDocumentFile(file);
         const checksum = createHash('sha256').update(file.buffer).digest('hex');
         const duplicate = await prisma.documentVersion.findFirst({
-          where: { condominiumId: req.params.condoId, checksum },
+          where: { condominiumId, checksum },
           include: { document: true },
         });
         if (duplicate) {
@@ -416,7 +421,7 @@ router.post(
         const versionId = randomUUID();
         storageKey = buildDocumentStorageKey({
           accountId: condominium.accountId,
-          condominiumId: req.params.condoId,
+          condominiumId,
           documentId,
           versionId,
           extension: inspected.extension,
@@ -427,7 +432,7 @@ router.post(
           const created = await tx.document.create({
             data: {
               id: documentId,
-              condominiumId: req.params.condoId,
+              condominiumId,
               title,
               category: categoryResult.data,
               requiredRole: roleResult.data,
@@ -437,7 +442,7 @@ router.post(
                 create: {
                   id: versionId,
                   accountId: condominium.accountId,
-                  condominiumId: req.params.condoId,
+                  condominiumId,
                   versionNumber: 1,
                   filePath: storageKey!,
                   originalFileName: file.originalname.slice(0, 255),
@@ -453,7 +458,7 @@ router.post(
           await tx.auditEvent.create({
             data: {
               accountId: condominium.accountId,
-              condominiumId: req.params.condoId,
+              condominiumId,
               userId: req.user.id,
               userEmail: req.user.email,
               action: 'create',

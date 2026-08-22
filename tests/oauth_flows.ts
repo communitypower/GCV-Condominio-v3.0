@@ -326,12 +326,9 @@ async function runTests() {
     // ==========================================
     console.log('\nTest 2: Testing Google Callback for unregistered email...');
     
-    // Parse the state from cookie (it is a signed cookie, but for testing we can extract it or pass it back)
-    // To pass verification, we extract the state from the cookie contents
-    // In Express, signed cookies look like: s%3A{JSON}%2B{HMAC}
-    const rawVal = stateCookieVal.substring(2); // Remove 's:' prefix
-    const jsonStr = rawVal.split('.')[0]; // Remove signature
-    const parsedState = JSON.parse(jsonStr);
+    const expectedState = new URL(redirectUrl).searchParams.get('state');
+    assert.ok(expectedState, 'Authorization redirect should expose the public OAuth state');
+    assert.ok(!stateCookieVal.includes(expectedState), 'OAuth cookie must keep state and PKCE data opaque');
 
     mockClaims = {
       sub: 'google-sub-unregistered',
@@ -340,7 +337,7 @@ async function runTests() {
       email_verified: true,
     };
 
-    const callbackRes = await fetch(`${BASE_URL}/google/callback?code=mock_code&state=${parsedState.state}`, {
+    const callbackRes = await fetch(`${BASE_URL}/google/callback?code=mock_code&state=${expectedState}`, {
       headers: {
         Cookie: `gcv_oauth_state=${stateCookieVal}`,
       },
@@ -369,10 +366,10 @@ async function runTests() {
     const urlRes2 = await fetch(`${BASE_URL}/google/login`, { redirect: 'manual' });
     const stateCookie2 = urlRes2.headers.get('set-cookie')!;
     const stateCookieVal2 = getCookieValue(stateCookie2, 'gcv_oauth_state')!;
-    const rawVal2 = stateCookieVal2.substring(2);
-    const parsedState2 = JSON.parse(rawVal2.split('.')[0]);
+    const expectedState2 = new URL(urlRes2.headers.get('location')!).searchParams.get('state');
+    assert.ok(expectedState2, 'Fresh authorization redirect should expose OAuth state');
 
-    const callbackRes2 = await fetch(`${BASE_URL}/google/callback?code=mock_code&state=${parsedState2.state}`, {
+    const callbackRes2 = await fetch(`${BASE_URL}/google/callback?code=mock_code&state=${expectedState2}`, {
       headers: {
         Cookie: `gcv_oauth_state=${stateCookieVal2}`,
         Host: 'attacker.example',
@@ -422,10 +419,10 @@ async function runTests() {
     const urlRes3 = await fetch(`${BASE_URL}/google/login`, { redirect: 'manual' });
     const stateCookie3 = urlRes3.headers.get('set-cookie')!;
     const stateCookieVal3 = getCookieValue(stateCookie3, 'gcv_oauth_state')!;
-    const rawVal3 = stateCookieVal3.substring(2);
-    const parsedState3 = JSON.parse(rawVal3.split('.')[0]);
+    const expectedState3 = new URL(urlRes3.headers.get('location')!).searchParams.get('state');
+    assert.ok(expectedState3, 'Existing-user authorization redirect should expose OAuth state');
 
-    const callbackRes3 = await fetch(`${BASE_URL}/google/callback?code=mock_code&state=${parsedState3.state}`, {
+    const callbackRes3 = await fetch(`${BASE_URL}/google/callback?code=mock_code&state=${expectedState3}`, {
       headers: {
         Cookie: `gcv_oauth_state=${stateCookieVal3}`,
       },

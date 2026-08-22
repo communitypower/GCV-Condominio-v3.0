@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { AuditAction, MembershipStatus, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import * as openid from 'openid-client';
-import { randomBytes, webcrypto } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, webcrypto } from 'node:crypto';
 import { hasPlatformAdminAccess, isApprovedPlatformAdminEmail } from '../services/system-admin';
 import {
   buildPasswordResetUrl,
@@ -86,6 +86,46 @@ function getTrustedAppUrl() {
 
 function oauthCallbackUrl(provider: 'google') {
   return new URL(`/api/v1/auth/${provider}/callback`, getTrustedAppUrl()).toString();
+}
+
+function oauthStateKey() {
+  return createHash('sha256')
+    .update(`${process.env.SESSION_SECRET || 'gcv_local_secret'}:oauth-state`, 'utf8')
+    .digest();
+}
+
+function sealOAuthState(value: { state: string; codeVerifier: string }) {
+  const initializationVector = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', oauthStateKey(), initializationVector);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(value), 'utf8'), cipher.final()]);
+  return [
+    'v1',
+    initializationVector.toString('base64url'),
+    encrypted.toString('base64url'),
+    cipher.getAuthTag().toString('base64url'),
+  ].join('.');
+}
+
+function openOAuthState(value: string) {
+  const [format, encodedIv, encodedCiphertext, encodedTag, extra] = value.split('.');
+  if (format !== 'v1' || !encodedIv || !encodedCiphertext || !encodedTag || extra !== undefined) return null;
+
+  try {
+    const initializationVector = Buffer.from(encodedIv, 'base64url');
+    const authenticationTag = Buffer.from(encodedTag, 'base64url');
+    if (initializationVector.length !== 12 || authenticationTag.length !== 16) return null;
+    const decipher = createDecipheriv('aes-256-gcm', oauthStateKey(), initializationVector);
+    decipher.setAuthTag(authenticationTag);
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(encodedCiphertext, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+    const parsed = JSON.parse(plaintext);
+    if (!parsed || typeof parsed.state !== 'string' || typeof parsed.codeVerifier !== 'string') return null;
+    return { state: parsed.state, codeVerifier: parsed.codeVerifier };
+  } catch {
+    return null;
+  }
 }
 
 function serializeForInlineScript(value: unknown) {
@@ -439,7 +479,7 @@ router.get('/google/login', async (req, res) => {
 
     const redirectUri = oauthCallbackUrl('google');
 
-    res.cookie('gcv_oauth_state', JSON.stringify({ state, codeVerifier, redirectUri }), {
+    res.cookie('gcv_oauth_state', sealOAuthState({ state, codeVerifier }), {
       httpOnly: true,
       signed: true,
       secure: isProductionLike(),
@@ -473,18 +513,12 @@ router.get('/google/callback', async (req, res) => {
 
   let expectedState: string;
   let codeVerifier: string;
-  let expectedRedirectUri: string;
-  try {
-    const parsed = JSON.parse(oauthCookie);
-    expectedState = parsed.state;
-    codeVerifier = parsed.codeVerifier;
-    expectedRedirectUri = parsed.redirectUri;
-    if (typeof expectedState !== 'string' || typeof codeVerifier !== 'string' || expectedRedirectUri !== oauthCallbackUrl('google')) {
-      return res.status(400).send('Dados OAuth corrompidos.');
-    }
-  } catch (e) {
+  const parsedOAuthState = openOAuthState(oauthCookie);
+  if (!parsedOAuthState) {
     return res.status(400).send("Dados OAuth corrompidos.");
   }
+  expectedState = parsedOAuthState.state;
+  codeVerifier = parsedOAuthState.codeVerifier;
 
   try {
     const googleConfig = await getGoogleConfig();

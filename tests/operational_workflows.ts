@@ -12,6 +12,7 @@ async function runTests() {
   let tempUnitId: string | null = null;
   let tempBuildingId: string | null = null;
   let equipmentId: string | null = null;
+  let equipmentWithoutDatesId: string | null = null;
   let planId: string | null = null;
   let commentId: string | null = null;
 
@@ -200,7 +201,12 @@ async function runTests() {
         status: 'operational',
       }),
     });
-    assert.strictEqual(missingEquipmentDatesRes.status, 400, "Unknown equipment dates must not default to today");
+    assert.strictEqual(missingEquipmentDatesRes.status, 201, "Equipment with unknown dates should be accepted");
+    const equipmentWithoutDates = (await missingEquipmentDatesRes.json()) as any;
+    equipmentWithoutDatesId = equipmentWithoutDates.id;
+    assert.strictEqual(equipmentWithoutDates.installDate, null, "Unknown install date must remain null");
+    assert.strictEqual(equipmentWithoutDates.lastInspection, null, "Unknown inspection date must remain null");
+    assert.strictEqual(equipmentWithoutDates.nextInspection, null, "Unknown next inspection date must remain null");
 
     const equipmentDates = {
       installDate: '2020-01-15T00:00:00.000Z',
@@ -360,6 +366,11 @@ async function runTests() {
     if (equipmentId) {
       await prisma.auditEvent.deleteMany({ where: { entity: 'Equipment', entityId: equipmentId } });
       await prisma.equipment.deleteMany({ where: { id: equipmentId } });
+    }
+
+    if (equipmentWithoutDatesId) {
+      await prisma.auditEvent.deleteMany({ where: { entity: 'Equipment', entityId: equipmentWithoutDatesId } });
+      await prisma.equipment.deleteMany({ where: { id: equipmentWithoutDatesId } });
     }
 
     if (chargeId) {
