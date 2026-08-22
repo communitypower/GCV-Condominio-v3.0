@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0-beta.1",
   "type": "module",
   "engines": {
     "node": ">=24.0.0",
@@ -18,6 +18,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:verify": "prisma migrate deploy && prisma migrate status && prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
     "db:seed": "prisma db seed",
+    "documents:purge:dry-run": "TMPDIR=/tmp tsx scripts/purge_documents.ts",
+    "documents:purge": "TMPDIR=/tmp tsx scripts/purge_documents.ts --execute",
     "audit": "npm audit --audit-level=high",
     "check": "npm run lint && npm run build && npm run audit",
     "test": "npm run test:data-safety && npm run test:oauth && npm run test:csrf && npm run test:access",
@@ -26,16 +28,19 @@
     "test:csrf": "TMPDIR=/tmp tsx tests/csrf_guard.ts",
     "test:access": "TMPDIR=/tmp tsx tests/platform_authorization.ts && TMPDIR=/tmp tsx tests/invitation_access_lifecycle.ts",
     "test:role-flow": "TMPDIR=/tmp tsx tests/role_onboarding_workflow.ts",
-    "test:api": "npm run test:api:auth && npm run test:api:documents && npm run test:api:operations && npm run test:api:flags && npm run test:api:observability",
+    "test:api": "npm run test:api:core && npm run test:api:flags && npm run test:api:ingestion",
+    "test:api:core": "npm run test:api:auth && npm run test:api:documents && npm run test:api:operations && npm run test:api:observability",
     "test:api:auth": "TMPDIR=/tmp tsx tests/auth_tenant_isolation.ts",
     "test:api:documents": "TMPDIR=/tmp tsx tests/document_acl.ts",
     "test:api:operations": "TMPDIR=/tmp tsx tests/operational_workflows.ts",
     "test:api:flags": "TMPDIR=/tmp tsx tests/feature_flags.ts",
     "test:api:observability": "TMPDIR=/tmp tsx tests/observability.ts",
+    "test:api:ingestion": "TMPDIR=/tmp tsx tests/document_ingestion_workflow.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "test:e2e:prod": "PLAYWRIGHT_BASE_URL=https://gcv-app-production-production.up.railway.app E2E_EXPECT_AI_ENABLED=true playwright test --project=chromium"
+    "test:e2e:data": "playwright test tests/e2e/data-ingestion.spec.ts --project=chromium",
+    "test:e2e:prod": "PLAYWRIGHT_BASE_URL=${PLAYWRIGHT_BASE_URL:-https://gcv-app-production-production.up.railway.app} playwright test --project=production-smoke"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -49,11 +54,15 @@
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
     "lucide-react": "^0.546.0",
+    "mammoth": "^1.12.1",
     "motion": "^12.23.24",
+    "multer": "^2.2.0",
     "openid-client": "^6.8.4",
     "prisma": "^6.19.3",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "read-excel-file": "^9.3.10",
+    "unpdf": "^1.5.0",
     "vite": "^6.2.3",
     "zod": "^4.4.3"
   },
@@ -62,6 +71,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^4.17.21",
+    "@types/multer": "^2.0.0",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
@@ -72,5 +82,8 @@
   },
   "prisma": {
     "seed": "node dist/seed.cjs"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.1"
   }
 }

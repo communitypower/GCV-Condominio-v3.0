@@ -42,6 +42,13 @@ const staffRoles = [
   PlatformRole.accountant,
 ];
 
+const allowedStatusTransitions: Record<MaintenanceStatus, MaintenanceStatus[]> = {
+  [MaintenanceStatus.reported]: [MaintenanceStatus.in_progress, MaintenanceStatus.cancelled],
+  [MaintenanceStatus.in_progress]: [MaintenanceStatus.resolved, MaintenanceStatus.cancelled],
+  [MaintenanceStatus.resolved]: [],
+  [MaintenanceStatus.cancelled]: [],
+};
+
 function hasScopedStaffRole(req: any) {
   return req.authorizationContext.memberships.some((membership: any) => staffRoles.includes(membership.role));
 }
@@ -124,17 +131,33 @@ router.post('/:condoId/tickets', requireAuth, tenantGuard, validateBody(createTi
       }
     }
 
-    const ticket = await prisma.maintenanceTicket.create({
-      data: {
-        condominiumId: condoId,
-        unitId: unitId || null,
-        title,
-        description,
-        category: category as MaintenanceCategory,
-        priority: priority as MaintenancePriority,
-        status: MaintenanceStatus.reported,
-        estimatedCost: estimatedCost ?? null,
-      },
+    const ticket = await prisma.$transaction(async (tx) => {
+      const created = await tx.maintenanceTicket.create({
+        data: {
+          condominiumId: condoId,
+          unitId: unitId || null,
+          title,
+          description,
+          category: category as MaintenanceCategory,
+          priority: priority as MaintenancePriority,
+          status: MaintenanceStatus.reported,
+          estimatedCost: estimatedCost ?? null,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          accountId: req.authorizationContext.accountId,
+          condominiumId: condoId,
+          userId: req.user.id,
+          userEmail: req.user.email,
+          action: 'create',
+          entity: 'MaintenanceTicket',
+          entityId: created.id,
+          details: `Ordem de serviço ${created.title} criada com status ${created.status}.`,
+          ipAddress: req.ip,
+        },
+      });
+      return created;
     });
 
     res.status(201).json(ticket);
@@ -167,6 +190,16 @@ router.patch(
         return res.status(404).json({ error: "Chamado não encontrado." });
       }
 
+      if (
+        status &&
+        status !== existingTicket.status &&
+        !allowedStatusTransitions[existingTicket.status].includes(status as MaintenanceStatus)
+      ) {
+        return res.status(409).json({
+          error: `Transição de status inválida: ${existingTicket.status} para ${status}.`,
+        });
+      }
+
       const updateData: any = {};
       if (status) updateData.status = status as MaintenanceStatus;
       if (assignedStaff !== undefined) updateData.assignedStaff = assignedStaff;
@@ -177,22 +210,39 @@ router.patch(
         updateData.resolvedAt = new Date();
       }
 
-      const ticket = await prisma.maintenanceTicket.update({
-        where: { id: ticketId },
-        data: updateData,
-      });
+      const ticket = await prisma.$transaction(async (tx) => {
+        const updated = await tx.maintenanceTicket.update({
+          where: { id: ticketId },
+          data: updateData,
+        });
 
-      // Track status change history
-      if (status && status !== existingTicket.status) {
-        await prisma.ticketStatusHistory.create({
+        if (status && status !== existingTicket.status) {
+          await tx.ticketStatusHistory.create({
+            data: {
+              ticketId,
+              fromStatus: existingTicket.status,
+              toStatus: status as MaintenanceStatus,
+              changedBy: req.user.email,
+            },
+          });
+        }
+        await tx.auditEvent.create({
           data: {
-            ticketId,
-            fromStatus: existingTicket.status,
-            toStatus: status as MaintenanceStatus,
-            changedBy: req.user.email,
+            accountId: req.authorizationContext.accountId,
+            condominiumId: req.params.condoId,
+            userId: req.user.id,
+            userEmail: req.user.email,
+            action: 'update',
+            entity: 'MaintenanceTicket',
+            entityId: updated.id,
+            details: status && status !== existingTicket.status
+              ? `Ordem de serviço atualizada de ${existingTicket.status} para ${updated.status}.`
+              : 'Ordem de serviço atualizada sem alteração de status.',
+            ipAddress: req.ip,
           },
         });
-      }
+        return updated;
+      });
 
       res.json(ticket);
     } catch (error) {
@@ -226,12 +276,28 @@ router.post('/:condoId/tickets/:ticketId/comments', requireAuth, tenantGuard, va
       }
     }
 
-    const ticketComment = await prisma.ticketComment.create({
-      data: {
-        ticketId,
-        authorName: req.user.email,
-        comment,
-      },
+    const ticketComment = await prisma.$transaction(async (tx) => {
+      const created = await tx.ticketComment.create({
+        data: {
+          ticketId,
+          authorName: req.user.email,
+          comment,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          accountId: req.authorizationContext.accountId,
+          condominiumId: req.params.condoId,
+          userId: req.user.id,
+          userEmail: req.user.email,
+          action: 'create',
+          entity: 'TicketComment',
+          entityId: created.id,
+          details: `Comentário adicionado à ordem de serviço "${ticket.title}".`,
+          ipAddress: req.ip,
+        },
+      });
+      return created;
     });
 
     res.status(201).json(ticketComment);

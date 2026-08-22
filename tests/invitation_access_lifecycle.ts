@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
+import { serializeSession } from '../server/services/session';
 import express from 'express';
 import { requireAuth, tenantGuard } from '../server/middleware/auth';
 import authRouter from '../server/routes/auth';
@@ -163,7 +164,14 @@ async function run() {
     'Unit access must not exist before acceptance'
   );
 
-  const pendingRequest: any = { signedCookies: { gcv_session: pendingMembership.userId } };
+  const pendingRequest: any = {
+    signedCookies: {
+      gcv_session: serializeSession({
+        id: pendingMembership.userId,
+        sessionVersion: pendingMembership.user.sessionVersion,
+      }),
+    },
+  };
   const pendingAuthResponse = mockResponse();
   let authenticated = false;
   await requireAuth(pendingRequest, pendingAuthResponse.response, () => {

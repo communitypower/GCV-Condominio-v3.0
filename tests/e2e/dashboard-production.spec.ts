@@ -1,11 +1,10 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { e2eSessionLogin } from './helpers/api';
+import { e2eSessionLogin, waitForDocumentDownload } from './helpers/api';
 import { cleanupE2EData, TEST_PREFIX, uniqueName } from './helpers/cleanup';
 import type { Equipment, MaintenanceRequest } from '../../src/types';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 const isProductionTarget = baseURL.includes('gcv-app-production-production.up.railway.app');
-const expectAiEnabled = process.env.E2E_EXPECT_AI_ENABLED === 'true';
 const visibleUuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
 async function passwordLogin(page: Page, email = 'sindico@gcv.com.br', password = 'sindico123') {
@@ -87,7 +86,6 @@ test('password session, dashboard shell, sidebar workflows, and logout work', as
     ['documentacao', /Biblioteca Digital de Documentação/i],
     ['notificacoes', /Comunicados & Notificações Gerais/i],
     ['usuarios', /Corpo Diretivo e Equipe/i],
-    ['github', /Controle de Versão & Integração GitHub/i],
   ];
 
   for (const [tab, expectedContent] of menuItems) {
@@ -95,6 +93,7 @@ test('password session, dashboard shell, sidebar workflows, and logout work', as
     await expect(page.getByTestId('dashboard-main')).toContainText(expectedContent);
     await expect(page.getByTestId('dashboard-main')).not.toContainText(visibleUuidPattern);
   }
+  await expect(page.getByTestId('nav-github')).toHaveCount(0);
 
   await page.getByTestId('nav-edificios').click();
   const firstUnit = page.getByTestId('unit-card').first();
@@ -193,7 +192,8 @@ test('Google and Microsoft auth entrypoints are controlled', async ({ request })
   }
 
   const microsoft = await request.get(`${baseURL}/api/v1/auth/microsoft/login`, { maxRedirects: 0 });
-  expect([302, 429, 500]).toContain(microsoft.status());
+  expect(microsoft.status()).toBe(501);
+  expect((await microsoft.json()).code).toBe('MICROSOFT_OAUTH_UNAVAILABLE');
 });
 
 test('API-backed dashboard workflows create, update, block, and clean production test data', async ({ request }) => {
@@ -335,27 +335,31 @@ test('API-backed dashboard workflows create, update, block, and clean production
   });
   expect(auditRes.status(), await auditRes.text()).toBe(201);
 
-  const documentRes = await request.post(`${baseURL}/api/v1/condominiums/${condo.id}/documents`, {
+  const documentRes = await request.post(`${baseURL}/api/v1/condominiums/${condo.id}/documents/upload`, {
     headers: { origin: baseURL },
-    data: {
-      title: uniqueName('DOCUMENT'),
+    multipart: {
+      files: { name: `${uniqueName('DOCUMENT')}.txt`, mimeType: 'text/plain', buffer: Buffer.from(`${TEST_PREFIX}document`) },
       category: 'billing',
       requiredRole: 'resident',
       unitId: unit.id,
-      filePath: `${TEST_PREFIX}document.pdf`,
     },
   });
   expect(documentRes.status(), await documentRes.text()).toBe(201);
-  const document = await documentRes.json();
+  const document = (await documentRes.json()).uploads[0];
 
-  const downloadRes = await request.get(`${baseURL}/api/v1/condominiums/${condo.id}/documents/${document.id}/download`);
-  expect(downloadRes.status(), await downloadRes.text()).toBe(410);
+  const downloadLink = await waitForDocumentDownload(request, baseURL, condo.id, document.id);
+  expect(downloadLink.status(), await downloadLink.text()).toBe(200);
+  const downloadRes = await request.get(`${baseURL}${(await downloadLink.json()).url}`);
+  expect(downloadRes.status(), await downloadRes.text()).toBe(200);
 
   const aiResponse = await request.post(`${baseURL}/api/gemini/chat`, {
     headers: { origin: baseURL },
     data: { prompt: 'Responda apenas: OK', contextData: { edificioNome: 'Condomínio Beta' } },
   });
-  expect(aiResponse.status(), await aiResponse.text()).toBe(expectAiEnabled ? 200 : 403);
+  const publicConfig = await request.get(`${baseURL}/api/v1/config`);
+  expect(publicConfig.ok()).toBeTruthy();
+  const aiEnabled = Boolean((await publicConfig.json()).features?.aiAssistant);
+  expect(aiResponse.status(), await aiResponse.text()).toBe(aiEnabled ? 410 : 403);
 
   const githubBlocked = await request.get(`${baseURL}/api/auth/github/url`);
   expect(githubBlocked.status()).toBe(403);

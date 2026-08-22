@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import { AuditAction, PrismaClient } from "@prisma/client";
@@ -25,8 +24,10 @@ import paymentsRouter from "./server/routes/payments";
 import announcementsRouter from "./server/routes/announcements";
 import invitationsRouter from "./server/routes/invitations";
 import onboardingRouter from "./server/routes/onboarding";
+import assistantRouter from "./server/routes/assistant";
 import { requireAuth } from "./server/middleware/auth";
 import { createCsrfProtection } from "./server/middleware/csrf";
+import { resumePendingDocumentProcessing } from "./server/services/document-processing";
 
 dotenv.config();
 
@@ -47,15 +48,20 @@ function assertRequiredEnv() {
       "SESSION_SECRET",
       "BETA_ALLOWED_EMAILS",
       "GOOGLE_CLIENT_ID",
-      "GOOGLE_CLIENT_SECRET",
-      "MICROSOFT_CLIENT_ID",
-      "MICROSOFT_CLIENT_SECRET",
-      "MICROSOFT_TENANT_ID"
+      "GOOGLE_CLIENT_SECRET"
     );
   }
 
   if (process.env.ENABLE_AI_ASSISTANT === "true") {
-    required.push("GEMINI_API_KEY");
+    if (process.env.ENABLE_DOCUMENT_INGESTION !== "true") {
+      throw new Error("ENABLE_AI_ASSISTANT requires ENABLE_DOCUMENT_INGESTION=true");
+    }
+    if (process.env.AI_PROVIDER === 'vertex_ai') required.push('GOOGLE_CLOUD_PROJECT');
+    else required.push("GEMINI_API_KEY");
+  }
+
+  if (isProductionLike && process.env.ENABLE_DOCUMENT_INGESTION === "true") {
+    required.push("DOCUMENT_STORAGE_PATH", "DOCUMENT_ANTIVIRUS_URL");
   }
 
   if (process.env.ENABLE_GITHUB_INTEGRATION === "true") {
@@ -78,7 +84,21 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable("x-powered-by");
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: isProductionLike ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      baseUri: ["'self'"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "data:"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      objectSrc: ["'none'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      upgradeInsecureRequests: [],
+    },
+  } : false,
   crossOriginEmbedderPolicy: false,
 }));
 app.use((req, res, next) => {
@@ -151,9 +171,24 @@ app.use("/api/v1/condominiums", procurementRouter);
 app.use("/api/v1/condominiums", paymentsRouter);
 app.use("/api/v1/condominiums", announcementsRouter);
 app.use("/api/v1/condominiums", invitationsRouter);
+app.use("/api/v1/condominiums", sensitiveLimiter, assistantRouter);
 app.use("/api/v1/accounts", auditRouter);
 app.use("/api/v1/onboarding", sensitiveLimiter, onboardingRouter);
 app.use("/api/v1/testing", testingRouter);
+
+app.get("/api/v1/config", (_req, res) => {
+  res.json({
+    environment: ENVIRONMENT,
+    features: {
+      aiAssistant: process.env.ENABLE_AI_ASSISTANT === "true",
+      documentIngestion: process.env.ENABLE_DOCUMENT_INGESTION === "true",
+      githubIntegration: process.env.ENABLE_GITHUB_INTEGRATION === "true",
+      demoExports: process.env.ENABLE_DEMO_EXPORTS === "true",
+      microsoftLogin: false,
+      passwordReset: !isProductionLike || Boolean(process.env.PASSWORD_RESET_EMAIL_WEBHOOK_URL),
+    },
+  });
+});
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -274,68 +309,15 @@ const checkDemoExports = async (req: any, res: express.Response, next: express.N
   next();
 };
 
-// Lazy initialize GoogleGenAI with warning on missing key
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY environment variable is required");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-  }
-  return aiClient;
-}
-
-// Endpoint to interact with Gemini
+// Legacy endpoint retained only to provide a controlled migration response.
+// Grounded assistant requests must pass through the tenant-scoped v1 route.
 app.post("/api/gemini/chat", sensitiveLimiter, requireAuth, async (req: any, res) => {
-  try {
-    if (process.env.ENABLE_AI_ASSISTANT !== "true") {
-      await auditFeatureAttempt(req, "AI_ASSISTANT", "Tentativa bloqueada: assistente de IA desabilitado.");
-      return res.status(403).json({ error: "Assistente de IA desabilitado neste ambiente." });
-    }
-
-    const { prompt, contextData } = req.body;
-    await auditFeatureAttempt(req, "AI_ASSISTANT", "Consulta enviada ao assistente de IA.");
-    const ai = getGeminiClient();
-
-    const edificioNome = contextData?.edificioNome || "Condomínio Bella Vista Premium";
-    const systemInstruction = `Você é o "G.C.V. Engenheiro Assistente IA", um analista e consultor inteligente de engenharia predial e gestão condominiável de alto padrão do ${edificioNome} (GCV).
-Sua missão é ajudar os síndicos, zeladores e moradores analisando dados cadastrais, ordens de serviço, finanças e manutenção predial.
-
-Aqui está o conjunto completo de dados ATUAIS do condomínio em formato JSON para você realizar suas consultas e análises:
-${JSON.stringify(contextData || {}, null, 2)}
-
-Instruções importantes:
-1. Sempre responda em português brasileiro formatado de forma limpa, direta, encorajadora e profissional com Markdown elegante.
-2. Seja preciso ao consultar os dados fornecidos. Se perguntarem pela taxa de adimplência, unidades atrasadas, equipamentos críticos ou ordens de serviço pendentes, consulte diretamente estes registros no JSON recebido.
-3. Se solicitado um relatório (financeiro, operacional, inventário ou de planos), gere-o com uma estrutura profissional contendo resumo executivo, detalhamento estatístico e recomendações técnicas claras de engenharia ou finanças.
-4. Evite inventar informações que contrariem o estado real dos dados no JSON.
-5. Seja focado em soluções de engenharia predial preventiva e melhores práticas de economia condominial.`;
-
-    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-    // Process chat using generateContent with system instruction
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-      },
-    });
-
-    res.json({ text: response.text });
-  } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    res.status(500).json({ error: error.message || "Erro ao consultar a Inteligência Artificial. Verifique a chave de API." });
+  if (process.env.ENABLE_AI_ASSISTANT !== "true") {
+    await auditFeatureAttempt(req, "AI_ASSISTANT", "Tentativa bloqueada: assistente de IA desabilitado.");
+    return res.status(403).json({ error: "Assistente de IA desabilitado neste ambiente." });
   }
+  await auditFeatureAttempt(req, "AI_ASSISTANT", "Endpoint legado bloqueado: contexto sem escopo de tenant.");
+  res.status(410).json({ error: "Use o Assistente IA dentro do condomínio ativo para garantir fontes e isolamento de dados." });
 });
 
 // GET /api/auth/github/url
@@ -571,6 +553,9 @@ async function setupVite() {
 setupVite().then(() => {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
+    void resumePendingDocumentProcessing()
+      .then((count) => count > 0 && console.log(`Resumed ${count} pending document processing job(s).`))
+      .catch((error) => console.error('Failed to resume document processing jobs:', error));
   });
 
   const shutdown = async (signal: string) => {

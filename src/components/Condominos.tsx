@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Ban, Copy, Mail, Plus, RefreshCw, Search, ShieldCheck, UserX, Users } from 'lucide-react';
+import { AlertTriangle, Ban, Building2, Copy, Mail, Plus, RefreshCw, Search, ShieldCheck, UserX, Users } from 'lucide-react';
 import { Unit } from '../types';
 
 type InvitationStatus = 'pending' | 'sent' | 'accepted' | 'expired' | 'cancelled' | 'revoked';
@@ -34,7 +34,13 @@ async function responseError(response: Response, fallback: string) {
   return payload?.error || fallback;
 }
 
-export default function Condominos({ condoId, units }: { condoId: string; units: Unit[] }) {
+type CondominosProps = {
+  condoId: string;
+  units: Unit[];
+  onNavigateToUnits: () => void;
+};
+
+export default function Condominos({ condoId, units, onNavigateToUnits }: CondominosProps) {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [search, setSearch] = useState('');
@@ -69,6 +75,11 @@ export default function Condominos({ condoId, units }: { condoId: string; units:
   const createInvitation = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (units.length === 0 || !form.unitId) {
+      setShowAdd(false);
+      setError('Cadastre uma unidade em Edifícios / Imóveis antes de convidar um morador.');
+      return;
+    }
     try {
       const response = await fetch(`/api/v1/condominiums/${condoId}/invitations`, {
         method: 'POST',
@@ -127,8 +138,23 @@ export default function Condominos({ condoId, units }: { condoId: string; units:
           <h1 className="text-3xl font-bold text-white flex items-center gap-2"><Users className="w-7 h-7" />Moradores e acessos</h1>
           <p className="text-sm text-zinc-400 mt-1">Cadastre vínculos, acompanhe convites e revogue acessos do condomínio ativo.</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="px-4 py-2.5 rounded-md bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Convidar morador</button>
+        {units.length > 0 ? (
+          <button data-testid="invite-resident" onClick={() => setShowAdd(true)} className="px-4 py-2.5 rounded-md bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Convidar morador</button>
+        ) : (
+          <button data-testid="create-first-unit" onClick={onNavigateToUnits} className="px-4 py-2.5 rounded-md bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-sm flex items-center gap-2"><Building2 className="w-4 h-4" />Cadastrar primeira unidade</button>
+        )}
       </div>
+
+      {units.length === 0 && (
+        <div data-testid="resident-unit-prerequisite" role="status" className="p-4 rounded-md border border-amber-500/35 bg-amber-500/10 flex flex-col sm:flex-row sm:items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-200">Cadastre uma unidade antes de convidar moradores</p>
+            <p className="text-xs text-zinc-400 mt-1">Todo morador precisa ser vinculado a uma unidade previamente cadastrada em Edifícios / Imóveis.</p>
+          </div>
+          <button onClick={onNavigateToUnits} className="text-sm font-semibold text-amber-300 hover:text-amber-200 flex items-center gap-2 whitespace-nowrap"><Building2 className="w-4 h-4" />Ir para Edifícios / Imóveis</button>
+        </div>
+      )}
 
       {error && <div role="alert" className="p-3 rounded-md border border-red-500/30 bg-red-500/10 text-sm text-red-300">{error}</div>}
       {lastLink && <div className="p-3 rounded-md border border-sky-500/25 bg-sky-500/5 flex items-center gap-3"><Mail className="w-4 h-4 text-sky-400" /><p className="text-xs text-zinc-300 flex-1 min-w-0 truncate">{lastLink}</p><button title="Copiar link" aria-label="Copiar link" onClick={() => navigator.clipboard.writeText(lastLink)}><Copy className="w-4 h-4 text-sky-400" /></button></div>}

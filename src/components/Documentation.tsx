@@ -31,8 +31,14 @@ export default function Documentation({ condoId }: DocumentationProps) {
     return matchesSearch && matchesFolder;
   });
 
-  const handleDownload = (docId: string) => {
-    window.open(`/api/v1/condominiums/${condoId}/documents/${docId}/download`, '_blank');
+  const handleDownload = async (docId: string) => {
+    const response = await fetch(`/api/v1/condominiums/${condoId}/documents/${docId}/download-url`);
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.url) {
+      window.alert(data?.error || 'Não foi possível preparar o download.');
+      return;
+    }
+    window.open(data.url, '_blank', 'noopener,noreferrer');
   };
 
   const folders = [

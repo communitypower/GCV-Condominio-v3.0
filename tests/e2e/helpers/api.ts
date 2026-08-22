@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext } from '@playwright/test';
+import { expect, type APIRequestContext, type APIResponse } from '@playwright/test';
 
 export type CondominiumContext = {
   id: string;
@@ -53,6 +53,20 @@ export async function firstCondominium(request: APIRequestContext, baseURL: stri
 export async function expectStatus(response: { status(): number; text(): Promise<string> }, status: number | number[]) {
   const statuses = Array.isArray(status) ? status : [status];
   expect(statuses, await response.text()).toContain(response.status());
+}
+
+export async function waitForDocumentDownload(
+  request: APIRequestContext,
+  baseURL: string,
+  condoId: string,
+  documentId: string
+): Promise<APIResponse> {
+  let response = await request.get(`${baseURL}/api/v1/condominiums/${condoId}/documents/${documentId}/download-url`);
+  for (let attempt = 0; attempt < 50 && response.status() === 423; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    response = await request.get(`${baseURL}/api/v1/condominiums/${condoId}/documents/${documentId}/download-url`);
+  }
+  return response;
 }
 
 export async function createTestBuilding(request: APIRequestContext, baseURL: string, condoId: string, name: string) {

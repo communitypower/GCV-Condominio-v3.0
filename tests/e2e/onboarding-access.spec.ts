@@ -19,10 +19,11 @@ test.describe('onboarding and scoped access', () => {
     for (const menu of [
       'edificios', 'equipamentos', 'planos', 'ordens', 'logs', 'bim', 'ciclovida',
       'compras', 'cobrancas', 'pagamentos', 'demonstrativos', 'condominos',
-      'documentacao', 'notificacoes', 'usuarios', 'carga-dados', 'github',
+      'documentacao', 'notificacoes', 'usuarios', 'carga-dados',
     ]) {
       await expect(page.getByTestId(`nav-${menu}`)).toBeVisible();
     }
+    await expect(page.getByTestId('nav-github')).toHaveCount(0);
     await expect(page.getByTestId('profile-description')).toHaveText(/Superusuário da Plataforma/i);
     await expect(page.getByText(/Recarregar Dados/i)).toBeVisible();
     await page.getByTestId('nav-onboarding').click();
@@ -74,6 +75,24 @@ test.describe('onboarding and scoped access', () => {
     expect(units).toHaveLength(1);
     expect(units[0].relationships).toHaveLength(1);
     expect(units[0].relationships[0].person.email).toBe('carlos.ramos@email.com');
+  });
+
+  test('resident invitation explains the unit prerequisite and links to unit registration', async ({ page }) => {
+    await page.route('**/api/v1/condominiums/*/units', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '[]',
+    }));
+    await page.goto('/');
+    await page.getByTestId('login-email').fill('vitorlcastro92@gmail.com');
+    await page.getByTestId('login-password').fill('platform-admin-local-123');
+    await page.getByTestId('login-submit').click();
+    await page.getByTestId('nav-condominos').click();
+
+    await expect(page.getByTestId('resident-unit-prerequisite')).toContainText('Cadastre uma unidade antes de convidar moradores');
+    await expect(page.getByTestId('invite-resident')).toHaveCount(0);
+    await page.getByTestId('create-first-unit').click();
+    await expect(page.getByRole('heading', { name: 'Cadastro de Unidades Habitacionais' })).toBeVisible();
   });
 
   test('invitation detects an authenticated account mismatch and supports account switching', async ({ page }) => {

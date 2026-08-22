@@ -141,6 +141,9 @@ process.env.MICROSOFT_CLIENT_ID = 'test-microsoft-client-id';
 process.env.MICROSOFT_CLIENT_SECRET = 'test-microsoft-client-secret';
 process.env.MICROSOFT_TENANT_ID = 'common';
 process.env.SESSION_SECRET = 'gcv_local_secret_session_key';
+process.env.PASSWORD_RESET_TEST_MODE = 'true';
+process.env.APP_URL = `http://localhost:${PORT}`;
+process.env.NODE_ENV = 'test';
 
 // Start test app
 const app = express();
@@ -280,7 +283,7 @@ async function runTests() {
 
     const person = await prisma.person.create({
       data: {
-        name: 'Pre Registered Person',
+        name: 'Pre Registered </script><script>globalThis.oauthXss=true</script>',
         email: preRegisteredEmail,
         phone: '11999999999',
       },
@@ -296,12 +299,20 @@ async function runTests() {
     // Test 1: Google login URL redirect
     // ==========================================
     console.log('Test 1: Testing Google Auth URL Generation...');
-    const urlRes = await fetch(`${BASE_URL}/google/login`, { redirect: 'manual' });
+    const urlRes = await fetch(`${BASE_URL}/google/login`, {
+      redirect: 'manual',
+      headers: { Host: 'attacker.example' },
+    });
     assert.strictEqual(urlRes.status, 302, 'Should redirect to Google authorization page');
     const redirectUrl = urlRes.headers.get('location')!;
     assert.ok(redirectUrl.includes('accounts.google.com'), 'Redirect location should be google');
     assert.ok(redirectUrl.includes('state='), 'Redirect URL should include state parameter');
     assert.ok(redirectUrl.includes('code_challenge='), 'Redirect URL should include PKCE code_challenge');
+    assert.strictEqual(
+      new URL(redirectUrl).searchParams.get('redirect_uri'),
+      `${BASE_URL}/google/callback`,
+      'OAuth redirect must come from APP_URL, never the request Host header'
+    );
     console.log('✔ Google login URL generated correctly.');
 
     // Save cookie details from login response
@@ -338,6 +349,9 @@ async function runTests() {
     assert.strictEqual(callbackRes.status, 403, 'Should return 403 Forbidden for unregistered email');
     const callbackText = await callbackRes.text();
     assert.ok(callbackText.includes('Acesso Não Autorizado'), 'Should notify user about unauthorized access');
+    const deniedCsp = callbackRes.headers.get('content-security-policy') || '';
+    assert.ok(deniedCsp.includes("script-src 'nonce-"), 'Denied callback should set a nonce-based CSP');
+    assert.ok(!deniedCsp.includes("'unsafe-inline'"), 'OAuth callback CSP must not allow unsafe inline code');
     console.log('✔ Unregistered OAuth login correctly rejected with 403.');
 
     // ==========================================
@@ -347,7 +361,7 @@ async function runTests() {
     mockClaims = {
       sub: 'google-sub-registered-new',
       email: preRegisteredEmail,
-      name: 'Pre Registered Person',
+      name: 'Pre Registered </script><script>globalThis.oauthXss=true</script>',
       email_verified: true,
     };
 
@@ -361,6 +375,7 @@ async function runTests() {
     const callbackRes2 = await fetch(`${BASE_URL}/google/callback?code=mock_code&state=${parsedState2.state}`, {
       headers: {
         Cookie: `gcv_oauth_state=${stateCookieVal2}`,
+        Host: 'attacker.example',
       },
     });
 
@@ -369,6 +384,12 @@ async function runTests() {
     assert.ok(callbackText2.includes('GOOGLE_AUTH_SUCCESS'), 'Should postMessage GOOGLE_AUTH_SUCCESS');
     assert.ok(callbackText2.includes('"isSystemAdmin":false'), 'Google payload should expose system-admin state');
     assert.ok(callbackText2.includes('"memberships":[]'), 'Google payload should expose only active memberships');
+    const successCsp = callbackRes2.headers.get('content-security-policy') || '';
+    assert.ok(successCsp.includes("script-src 'nonce-"), 'Callback should set a nonce-based CSP');
+    assert.ok(!successCsp.includes("'unsafe-inline'"), 'OAuth callback CSP must not allow unsafe inline code');
+    assert.ok(!callbackText2.includes('</script><script>globalThis.oauthXss'), 'Provider claims must not break out of the callback script');
+    assert.ok(callbackText2.includes('\\u003c/script\\u003e'), 'Inline JSON should escape HTML-significant characters');
+    assert.ok(!callbackText2.includes('attacker.example'), 'Callback payload must not trust the request Host header');
     
     // Check cookie
     const sessionCookieHeader = callbackRes2.headers.get('set-cookie')!;
@@ -424,55 +445,96 @@ async function runTests() {
     console.log('✔ Existing user linked successfully.');
 
     // ==========================================
-    // Test 5: Microsoft login URL redirect
+    // Test 5: Microsoft is explicitly unavailable during beta
     // ==========================================
-    console.log('\nTest 5: Testing Microsoft Auth URL Generation...');
+    console.log('\nTest 5: Testing Microsoft OAuth beta shutdown...');
+    const microsoftLinksBefore = await prisma.oauthAccount.count({ where: { provider: 'microsoft' } });
     const msUrlRes = await fetch(`${BASE_URL}/microsoft/login`, { redirect: 'manual' });
-    assert.strictEqual(msUrlRes.status, 302, 'Should redirect to Microsoft authorization page');
-    const msRedirectUrl = msUrlRes.headers.get('location')!;
-    assert.ok(msRedirectUrl.includes('login.microsoftonline.com'), 'Redirect location should be microsoft');
-    assert.ok(msRedirectUrl.includes('state='), 'Redirect URL should include state parameter');
-    console.log('✔ Microsoft login URL generated correctly.');
-
-    const msStateCookie = msUrlRes.headers.get('set-cookie')!;
-    assert.ok(msStateCookie.includes('gcv_oauth_state_ms'), 'Should set microsoft state cookie');
-    const msStateCookieVal = getCookieValue(msStateCookie, 'gcv_oauth_state_ms')!;
+    assert.strictEqual(msUrlRes.status, 501, 'Microsoft login must be unavailable during beta');
+    assert.strictEqual(msUrlRes.headers.get('location'), null, 'Microsoft login must not redirect');
+    assert.strictEqual((await msUrlRes.json()).code, 'MICROSOFT_OAUTH_UNAVAILABLE');
+    const callbackResMs = await fetch(`${BASE_URL}/microsoft/callback?code=untrusted&state=untrusted`);
+    assert.strictEqual(callbackResMs.status, 501, 'Microsoft callback must not process claims during beta');
+    assert.strictEqual((await callbackResMs.json()).code, 'MICROSOFT_OAUTH_UNAVAILABLE');
+    const microsoftLinks = await prisma.oauthAccount.count({ where: { provider: 'microsoft' } });
+    assert.strictEqual(microsoftLinks, microsoftLinksBefore, 'Disabled Microsoft endpoints must not create account links');
+    console.log('✔ Microsoft OAuth is explicitly unavailable.');
 
     // ==========================================
-    // Test 6: Microsoft callback linking to existing User
+    // Test 6: Password reset anti-enumeration and one-time token
     // ==========================================
-    console.log('\nTest 6: Testing Microsoft Callback linking to existing User...');
-    
-    // Clean up ms link for syndic
-    await prisma.oauthAccount.deleteMany({ where: { userId: syndicUser.id, provider: 'microsoft' } });
-
-    const rawValMs = msStateCookieVal.substring(2);
-    const parsedStateMs = JSON.parse(rawValMs.split('.')[0]);
-
-    mockClaims = {
-      sub: 'microsoft-sub-syndic',
-      email: 'sindico@gcv.com.br',
-      name: 'Cassiano Marins (MS)',
-    };
-
-    const callbackResMs = await fetch(`${BASE_URL}/microsoft/callback?code=mock_code&state=${parsedStateMs.state}`, {
-      headers: {
-        Cookie: `gcv_oauth_state_ms=${msStateCookieVal}`,
-      },
+    console.log('\nTest 6: Testing password reset lifecycle...');
+    const preResetLogin = await fetch(`${BASE_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: allowlistTestEmail, password: allowlistTestPassword }),
     });
-
-    assert.strictEqual(callbackResMs.status, 200, 'Callback should succeed');
-    const callbackTextMs = await callbackResMs.text();
-    assert.ok(callbackTextMs.includes('MICROSOFT_AUTH_SUCCESS'), 'Should postMessage MICROSOFT_AUTH_SUCCESS');
-    assert.ok(callbackTextMs.includes('"isSystemAdmin":false'), 'Microsoft payload should expose system-admin state');
-
-    const syndicUserMs = await prisma.user.findUnique({
-      where: { email: 'sindico@gcv.com.br' },
-      include: { oauthAccounts: true },
+    assert.strictEqual(preResetLogin.status, 200);
+    const preResetCookie = preResetLogin.headers.get('set-cookie');
+    assert.ok(preResetCookie, 'Pre-reset login must provide a session for revocation verification');
+    const unknownReset = await fetch(`${BASE_URL}/password-reset/request`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'unknown@gcv.invalid' }),
     });
-    const hasMsLink = syndicUserMs!.oauthAccounts.some(acc => acc.provider === 'microsoft' && acc.providerUserId === 'microsoft-sub-syndic');
-    assert.ok(hasMsLink, 'OAuth account link should be created in DB for Microsoft');
-    console.log('✔ Microsoft user linked successfully.');
+    const knownReset = await fetch(`${BASE_URL}/password-reset/request`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: allowlistTestEmail }),
+    });
+    assert.strictEqual(unknownReset.status, 202);
+    assert.strictEqual(knownReset.status, 202);
+    const unknownBody = await unknownReset.json();
+    const knownBody = await knownReset.json();
+    assert.strictEqual(unknownBody.message, knownBody.message, 'Password reset response must not enumerate accounts');
+    assert.strictEqual(unknownBody.resetToken, undefined, 'Unknown accounts must never receive a token');
+    assert.ok(knownBody.resetToken, 'Test mode should expose the reset token for verification');
+    assert.ok(knownBody.resetUrl.startsWith(`${process.env.APP_URL}/reset-password?token=`), 'Reset URL must use APP_URL');
+    const firstTokenHash = crypto.createHash('sha256').update(knownBody.resetToken).digest('hex');
+    const storedReset = await prisma.passwordResetToken.findUnique({ where: { tokenHash: firstTokenHash } });
+    assert.ok(storedReset, 'Reset request must persist a hashed token');
+    assert.notStrictEqual(storedReset.tokenHash, knownBody.resetToken, 'Raw reset token must never be stored');
+    assert.ok(storedReset.requestedIp, 'Reset request must record the source IP');
+    await prisma.passwordResetToken.update({
+      where: { id: storedReset.id },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+    const expiredReset = await fetch(`${BASE_URL}/password-reset/complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: knownBody.resetToken, password: 'ExpiredSecurePassword123' }),
+    });
+    assert.strictEqual(expiredReset.status, 400, 'Expired reset tokens must be rejected');
+
+    const freshReset = await fetch(`${BASE_URL}/password-reset/request`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: allowlistTestEmail }),
+    });
+    const freshResetBody = await freshReset.json();
+    const freshTokenHash = crypto.createHash('sha256').update(freshResetBody.resetToken).digest('hex');
+    const supersededToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash: firstTokenHash } });
+    assert.ok(supersededToken?.usedAt, 'A new request must invalidate older open tokens');
+
+    const weakPassword = await fetch(`${BASE_URL}/password-reset/complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: freshResetBody.resetToken, password: 'weak' }),
+    });
+    assert.strictEqual(weakPassword.status, 400, 'Weak passwords must be rejected');
+
+    const newPassword = 'NewSecurePassword123';
+    const completedReset = await fetch(`${BASE_URL}/password-reset/complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: freshResetBody.resetToken, password: newPassword }),
+    });
+    assert.strictEqual(completedReset.status, 200, 'Valid reset token should update the password');
+    const consumedToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash: freshTokenHash } });
+    assert.ok(consumedToken?.usedAt, 'Successful reset must persist token consumption');
+    const revokedSession = await fetch(`${BASE_URL}/me`, { headers: { Cookie: preResetCookie! } });
+    assert.strictEqual(revokedSession.status, 401, 'Password reset must revoke sessions issued before the reset');
+    const replayReset = await fetch(`${BASE_URL}/password-reset/complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: freshResetBody.resetToken, password: 'AnotherSecurePassword123' }),
+    });
+    assert.strictEqual(replayReset.status, 400, 'Reset token must be single-use');
+    const loginWithResetPassword = await fetch(`${BASE_URL}/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: allowlistTestEmail, password: newPassword }),
+    });
+    assert.strictEqual(loginWithResetPassword.status, 200, 'The new password should authenticate');
+    const resetAudit = await prisma.auditEvent.findFirst({
+      where: { userId: allowlistTestUser.id, details: { startsWith: 'Senha redefinida com token ' } },
+    });
+    assert.ok(resetAudit, 'Successful password reset must be audited');
+    console.log('✔ Password reset is anti-enumerating, expiring by design and single-use.');
 
     // Clean up test users & data
     const finalClean = await prisma.user.findUnique({ where: { email: preRegisteredEmail } });

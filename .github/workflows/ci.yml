@@ -1,6 +1,7 @@
 name: GCV SaaS CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     tags: ["v*"]
@@ -64,12 +65,15 @@ jobs:
       BASE_URL: http://localhost:3200/api/v1
       DATABASE_URL: postgresql://gcv_user:gcv_password@localhost:5432/gcv_condominio?schema=public
       SESSION_SECRET: ci_test_secret
+      DOCUMENT_STORAGE_PATH: /tmp/gcv-ci-core-documents
+      SEED_PLATFORM_ADMIN_PASSWORD: platform-admin-local-123
       GOOGLE_CLIENT_ID: test-google-client-id
       GOOGLE_CLIENT_SECRET: test-google-client-secret
       MICROSOFT_CLIENT_ID: test-microsoft-client-id
       MICROSOFT_CLIENT_SECRET: test-microsoft-client-secret
       MICROSOFT_TENANT_ID: common
       ENABLE_AI_ASSISTANT: "false"
+      ENABLE_DOCUMENT_INGESTION: "true"
       ENABLE_GITHUB_INTEGRATION: "false"
       ENABLE_DEMO_EXPORTS: "false"
 
@@ -111,8 +115,17 @@ jobs:
           cat /tmp/gcv-server.log
           exit 1
 
-      - name: Run API smoke tests
-        run: npm run test:api
+      - name: Run role onboarding workflow
+        run: npm run test:role-flow
+
+      - name: Validate document purge in dry-run mode
+        run: npm run documents:purge:dry-run
+
+      - name: Run API core smoke tests
+        run: npm run test:api:core
+
+      - name: Verify disabled feature flags
+        run: npm run test:api:flags
 
       - name: Stop test server
         if: always()
@@ -122,10 +135,95 @@ jobs:
           fi
           cat /tmp/gcv-server.log || true
 
+  ingestion-api:
+    name: Document Ingestion API Tests
+    runs-on: ubuntu-latest
+    needs: api-smoke
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: gcv_condominio
+          POSTGRES_USER: gcv_user
+          POSTGRES_PASSWORD: gcv_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gcv_user -d gcv_condominio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PORT: 3250
+      NODE_ENV: test
+      APP_URL: http://localhost:3250
+      BASE_URL: http://localhost:3250/api/v1
+      DATABASE_URL: postgresql://gcv_user:gcv_password@localhost:5432/gcv_condominio?schema=public
+      SESSION_SECRET: ci_ingestion_session_secret
+      DOCUMENT_STORAGE_PATH: /tmp/gcv-ci-documents
+      ENABLE_E2E_TESTING: "true"
+      ENABLE_AI_ASSISTANT: "true"
+      ENABLE_DOCUMENT_INGESTION: "true"
+      GEMINI_API_KEY: test-only
+      GOOGLE_CLIENT_ID: test-google-client-id
+      GOOGLE_CLIENT_SECRET: test-google-client-secret
+      MICROSOFT_CLIENT_ID: test-microsoft-client-id
+      MICROSOFT_CLIENT_SECRET: test-microsoft-client-secret
+      MICROSOFT_TENANT_ID: common
+      ENABLE_GITHUB_INTEGRATION: "false"
+      ENABLE_DEMO_EXPORTS: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application and seed bundle
+        run: npm run build
+
+      - name: Apply migrations and seed database
+        run: |
+          npm run db:migrate:deploy
+          npm run db:seed
+
+      - name: Start ingestion test server
+        run: |
+          npm run start > /tmp/gcv-ingestion-server.log 2>&1 &
+          echo $! > /tmp/gcv-ingestion-server.pid
+          for i in {1..30}; do
+            if curl -fsS http://localhost:3250/readyz; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/gcv-ingestion-server.log
+          exit 1
+
+      - name: Run ingestion API workflow with test-only AI mock
+        run: npm run test:api:ingestion
+
+      - name: Stop ingestion test server
+        if: always()
+        run: |
+          if [ -f /tmp/gcv-ingestion-server.pid ]; then
+            kill "$(cat /tmp/gcv-ingestion-server.pid)" || true
+          fi
+          cat /tmp/gcv-ingestion-server.log || true
+
   browser-e2e:
     name: Browser E2E Tests
     runs-on: ubuntu-latest
-    needs: api-smoke
+    needs: ingestion-api
 
     services:
       postgres:
@@ -152,12 +250,15 @@ jobs:
       SESSION_SECRET: ci_browser_e2e_session_secret
       E2E_TEST_SECRET: ci_browser_e2e_endpoint_secret
       ENABLE_E2E_TESTING: "true"
+      DOCUMENT_STORAGE_PATH: /tmp/gcv-ci-browser-documents
       GOOGLE_CLIENT_ID: test-google-client-id
       GOOGLE_CLIENT_SECRET: test-google-client-secret
       MICROSOFT_CLIENT_ID: test-microsoft-client-id
       MICROSOFT_CLIENT_SECRET: test-microsoft-client-secret
       MICROSOFT_TENANT_ID: common
-      ENABLE_AI_ASSISTANT: "false"
+      ENABLE_AI_ASSISTANT: "true"
+      ENABLE_DOCUMENT_INGESTION: "true"
+      GEMINI_API_KEY: test-only
       ENABLE_GITHUB_INTEGRATION: "false"
       ENABLE_DEMO_EXPORTS: "false"
 
@@ -219,3 +320,28 @@ jobs:
             kill "$(cat /tmp/gcv-e2e-server.pid)" || true
           fi
           cat /tmp/gcv-e2e-server.log || true
+
+  production-smoke:
+    name: Production Read-Only Smoke
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    env:
+      CI: "true"
+      PLAYWRIGHT_BASE_URL: ${{ vars.PRODUCTION_SMOKE_URL || 'https://gcv-app-production-production.up.railway.app' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run non-destructive production smoke
+        run: npm run test:e2e:prod

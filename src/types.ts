@@ -70,9 +70,9 @@ export interface Equipment {
   location: string;
   category: string;
   status: 'operational' | 'alert' | 'critical' | 'maintenance';
-  lastInspection: string;
-  nextInspection: string;
-  installDate: string;
+  lastInspection: string | null;
+  nextInspection: string | null;
+  installDate: string | null;
 }
 
 export interface MaintenancePlan {
