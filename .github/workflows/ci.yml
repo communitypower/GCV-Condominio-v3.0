@@ -248,6 +248,7 @@ jobs:
       PLAYWRIGHT_BASE_URL: http://localhost:3300
       DATABASE_URL: postgresql://gcv_user:gcv_password@localhost:5432/gcv_condominio?schema=public
       SESSION_SECRET: ci_browser_e2e_session_secret
+      SEED_PLATFORM_ADMIN_PASSWORD: platform-admin-local-123
       E2E_TEST_SECRET: ci_browser_e2e_endpoint_secret
       ENABLE_E2E_TESTING: "true"
       DOCUMENT_STORAGE_PATH: /tmp/gcv-ci-browser-documents
