@@ -481,7 +481,7 @@ router.get('/google/login', async (req, res) => {
 
     const sealedOAuthState = sealOAuthState({ state, codeVerifier });
     // The PKCE verifier is AES-GCM encrypted before it reaches this cookie sink.
-    // codeql[js/clear-text-storage-of-sensitive-information]
+    // codeql[js/clear-text-storage-of-sensitive-data]
     res.cookie('gcv_oauth_state', sealedOAuthState, {
       httpOnly: true,
       signed: true,

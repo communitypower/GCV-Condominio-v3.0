@@ -101,6 +101,8 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
 }));
+// Unsafe requests are rejected by the exact-origin middleware registered below; CodeQL does not model custom CSRF guards.
+// codeql[js/missing-token-validation]
 app.use((req, res, next) => {
   const requestId = req.get("x-request-id") || randomUUID();
   res.setHeader("x-request-id", requestId);
@@ -127,8 +129,6 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "1mb" }));
-// Unsafe requests are rejected by the exact-origin middleware below; CodeQL does not model custom CSRF guards.
-// codeql[js/missing-token-validation]
 app.use(cookieParser(process.env.SESSION_SECRET || "gcv_local_secret"));
 app.use(createCsrfProtection({
   enabled: ENVIRONMENT !== "test",
