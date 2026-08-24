@@ -72,7 +72,26 @@ function assertRequiredEnv() {
   }
 }
 
-assertRequiredEnv();
+// Defer environment validation until startup, with retries to allow reference variables to populate
+async function waitForRequiredEnv(maxRetries = 30, delayMs = 500): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      assertRequiredEnv();
+      console.log(`✓ Environment variables validated on attempt ${attempt}`);
+      return;
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error; // Give up after max retries
+      }
+      console.log(
+        `⚠ Env check failed (${attempt}/${maxRetries}), retrying in ${delayMs}ms... Error: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
 
 const app = express();
 app.set('trust proxy', 1);
@@ -568,24 +587,30 @@ async function setupVite() {
   }
 }
 
-setupVite().then(() => {
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+setupVite()
+  .then(async () => {
+    // Validate environment variables with retries before starting the server
+    await waitForRequiredEnv();
 
-  const shutdown = async (signal: string) => {
-    console.log(`Received ${signal}. Shutting down...`);
-    server.close(async () => {
-      await prisma.$disconnect();
-      process.exit(0);
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT}`);
     });
-  };
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
-}).catch((err) => {
-  console.error("Failed to start server", err);
-  prisma.$disconnect().finally(() => {
-    process.exit(1);
+    const shutdown = async (signal: string) => {
+      console.log(`Received ${signal}. Shutting down...`);
+      server.close(async () => {
+        await prisma.$disconnect();
+        process.exit(0);
+      });
+    };
+
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
+  })
+  .catch((err) => {
+    console.error("Failed to start server", err);
+    prisma.$disconnect().finally(() => {
+      process.exit(1);
+    });
   });
-});
+
