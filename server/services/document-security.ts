@@ -1,45 +1,41 @@
-import { connect } from 'node:http2';
+import { connect } from 'node:net';
 
 type ScanResult = { status: 'clean' | 'infected' | 'unavailable'; details?: string };
 
-async function scanWithClamavRestH2c(endpoint: string, input: { buffer: Buffer; mimeType: string; fileName?: string | null }) {
+async function scanWithClamavTcp(endpoint: string, input: { buffer: Buffer }) {
   const url = new URL(endpoint);
-  if (url.protocol !== 'http:') throw new Error('CLAMAV_REST_H2C_REQUIRES_HTTP');
-
-  const boundary = `----gcv-${crypto.randomUUID()}`;
-  const fileName = (input.fileName || 'document').replace(/[\r\n"]/g, '_');
-  const payload = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${input.mimeType}\r\n\r\n`),
-    input.buffer,
-    Buffer.from(`\r\n--${boundary}--\r\n`),
-  ]);
-
-  return new Promise<number>((resolve, reject) => {
-    const client = connect(url.origin);
-    const timeout = setTimeout(() => finish(new Error('CLAMAV_REST_TIMEOUT')), 30_000);
+  const port = Number(url.port || 3310);
+  return new Promise<'clean' | 'infected'>((resolve, reject) => {
+    const socket = connect({ host: url.hostname, port });
+    const timeout = setTimeout(() => finish(new Error('CLAMAV_TCP_TIMEOUT')), 30_000);
     let finished = false;
-    const finish = (result: number | Error) => {
+    let response = '';
+    const finish = (result: 'clean' | 'infected' | Error) => {
       if (finished) return;
       finished = true;
       clearTimeout(timeout);
-      client.close();
+      socket.destroy();
       result instanceof Error ? reject(result) : resolve(result);
     };
-    client.once('error', finish);
-    const request = client.request({
-      ':method': 'POST',
-      ':path': `${url.pathname}${url.search}`,
-      'content-type': `multipart/form-data; boundary=${boundary}`,
-      'content-length': String(payload.length),
-      ...(process.env.DOCUMENT_ANTIVIRUS_TOKEN ? { authorization: `Bearer ${process.env.DOCUMENT_ANTIVIRUS_TOKEN}` } : {}),
+    socket.once('error', finish);
+    socket.once('connect', () => {
+      socket.write('zINSTREAM\0');
+      for (let offset = 0; offset < input.buffer.length; offset += 65_536) {
+        const chunk = input.buffer.subarray(offset, offset + 65_536);
+        const length = Buffer.allocUnsafe(4);
+        length.writeUInt32BE(chunk.length);
+        socket.write(length);
+        socket.write(chunk);
+      }
+      socket.write(Buffer.alloc(4));
     });
-    request.once('error', finish);
-    request.once('response', (headers) => {
-      const status = Number(headers[':status']);
-      request.resume();
-      request.once('end', () => finish(status));
+    socket.on('data', (chunk) => {
+      response += chunk.toString('utf8');
+      if (!response.includes('\0')) return;
+      if (/\bOK\0/.test(response)) return finish('clean');
+      if (/\bFOUND\0/.test(response)) return finish('infected');
+      finish(new Error(`CLAMAV_TCP_INVALID_RESPONSE:${response.slice(0, 120)}`));
     });
-    request.end(payload);
   });
 }
 
@@ -63,12 +59,11 @@ export async function scanDocumentContent(input: { buffer: Buffer; mimeType: str
       : { status: 'unavailable', details: 'Antivírus não configurado; arquivo mantido em quarentena.' };
   }
   try {
-    const isClamavRest = protocol === 'clamav_rest';
-    if (isClamavRest) {
-      const status = await scanWithClamavRestH2c(endpoint, input);
-      if (status === 406) return { status: 'infected', details: 'ClamAV identificou conteúdo malicioso.' };
-      if (status >= 200 && status < 300) return { status: 'clean', details: 'Arquivo verificado pelo ClamAV.' };
-      return { status: 'unavailable', details: `ClamAV respondeu HTTP ${status}; arquivo mantido em quarentena.` };
+    if (protocol === 'clamav_tcp') {
+      const status = await scanWithClamavTcp(endpoint, input);
+      return status === 'infected'
+        ? { status, details: 'ClamAV identificou conteúdo malicioso.' }
+        : { status, details: 'Arquivo verificado pelo ClamAV.' };
     }
     const headers = {
       'Content-Type': input.mimeType,
