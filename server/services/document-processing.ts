@@ -164,7 +164,7 @@ export async function resumePendingDocumentProcessing() {
         },
         {
           processingStatus: DocumentProcessingStatus.failed,
-          processingError: { startsWith: 'Antivírus indisponível' },
+          scanStatus: DocumentScanStatus.unavailable,
         },
       ],
       document: { deletedAt: null },
