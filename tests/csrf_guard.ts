@@ -48,7 +48,7 @@ async function runTests() {
   assert.strictEqual(sameOriginPost.nextCalled, true, 'Same-origin POST should pass');
 
   const sameHostPost = await runMiddleware('PATCH', 'https://tenant.example.com', 'tenant.example.com');
-  assert.strictEqual(sameHostPost.nextCalled, true, 'Current host origin should pass');
+  assert.strictEqual(sameHostPost.statusCode, 403, 'Request Host must not override configured APP_URL');
 
   const missingOriginPost = await runMiddleware('POST');
   assert.strictEqual(missingOriginPost.statusCode, 403, 'Missing Origin on unsafe method should be blocked');

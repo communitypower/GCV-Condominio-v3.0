@@ -10,15 +10,23 @@ const prisma = new PrismaClient();
 const equipmentStatusSchema = z.enum(EquipmentStatus);
 const planFrequencySchema = z.enum(PlanFrequency);
 const planStatusSchema = z.enum(PlanStatus);
+const nullableEquipmentDateSchema = z.preprocess(
+  (value) => value === '' || value === null || value === undefined ? null : value,
+  z.coerce.date().nullable()
+);
+const optionalEquipmentDateSchema = z.preprocess(
+  (value) => value === '' || value === null ? null : value,
+  z.coerce.date().nullable().optional()
+);
 
 const createEquipmentSchema = z.object({
   name: z.string().trim().min(1).max(160),
   location: z.string().trim().min(1).max(160),
   category: z.string().trim().min(1).max(80),
   status: equipmentStatusSchema,
-  lastInspection: z.coerce.date().optional().nullable(),
-  nextInspection: z.coerce.date().optional().nullable(),
-  installDate: z.coerce.date().optional().nullable(),
+  lastInspection: nullableEquipmentDateSchema.optional(),
+  nextInspection: nullableEquipmentDateSchema.optional(),
+  installDate: nullableEquipmentDateSchema.optional(),
 });
 
 const updateEquipmentSchema = z.object({
@@ -26,8 +34,9 @@ const updateEquipmentSchema = z.object({
   location: z.string().trim().min(1).max(160).optional(),
   category: z.string().trim().min(1).max(80).optional(),
   status: equipmentStatusSchema.optional(),
-  lastInspection: z.coerce.date().optional().nullable(),
-  nextInspection: z.coerce.date().optional().nullable(),
+  lastInspection: optionalEquipmentDateSchema,
+  nextInspection: optionalEquipmentDateSchema,
+  installDate: optionalEquipmentDateSchema,
 }).refine((data) => Object.keys(data).length > 0, {
   message: 'Ao menos um campo deve ser informado.',
 });
@@ -70,22 +79,38 @@ router.post(
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
   validateBody(createEquipmentSchema),
-  async (req, res) => {
+  async (req: any, res) => {
     const { condoId } = req.params;
     const { name, location, category, status, lastInspection, nextInspection, installDate } = req.body;
 
     try {
-      const equipment = await prisma.equipment.create({
-        data: {
-          condominiumId: condoId,
-          name,
-          location,
-          category,
-          status: status as EquipmentStatus,
-          lastInspection: lastInspection || new Date(),
-          nextInspection: nextInspection || new Date(),
-          installDate: installDate || new Date(),
-        },
+      const equipment = await prisma.$transaction(async (tx) => {
+        const created = await tx.equipment.create({
+          data: {
+            condominiumId: condoId,
+            name,
+            location,
+            category,
+            status: status as EquipmentStatus,
+            lastInspection,
+            nextInspection,
+            installDate,
+          },
+        });
+        await tx.auditEvent.create({
+          data: {
+            accountId: req.authorizationContext.accountId,
+            condominiumId: condoId,
+            userId: req.user.id,
+            userEmail: req.user.email,
+            action: 'create',
+            entity: 'Equipment',
+            entityId: created.id,
+            details: `Equipamento ${created.name} criado em ${created.location}.`,
+            ipAddress: req.ip,
+          },
+        });
+        return created;
       });
       res.status(201).json(equipment);
     } catch (error) {
@@ -118,7 +143,7 @@ router.post(
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
   validateBody(createPlanSchema),
-  async (req, res) => {
+  async (req: any, res) => {
     const { condoId } = req.params;
     const { equipmentId, title, description, frequency, nextOccurrence, status } = req.body;
 
@@ -132,16 +157,32 @@ router.post(
         }
       }
 
-      const plan = await prisma.maintenancePlan.create({
-        data: {
-          condominiumId: condoId,
-          equipmentId: equipmentId || null,
-          title,
-          description,
-          frequency: frequency as PlanFrequency,
-          nextOccurrence,
-          status: status as PlanStatus,
-        },
+      const plan = await prisma.$transaction(async (tx) => {
+        const created = await tx.maintenancePlan.create({
+          data: {
+            condominiumId: condoId,
+            equipmentId: equipmentId || null,
+            title,
+            description,
+            frequency: frequency as PlanFrequency,
+            nextOccurrence,
+            status: status as PlanStatus,
+          },
+        });
+        await tx.auditEvent.create({
+          data: {
+            accountId: req.authorizationContext.accountId,
+            condominiumId: condoId,
+            userId: req.user.id,
+            userEmail: req.user.email,
+            action: 'create',
+            entity: 'MaintenancePlan',
+            entityId: created.id,
+            details: `Plano preventivo ${created.title} criado com status ${created.status}.`,
+            ipAddress: req.ip,
+          },
+        });
+        return created;
       });
       res.status(201).json(plan);
     } catch (error) {
@@ -158,7 +199,7 @@ router.patch(
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
   validateBody(updatePlanSchema),
-  async (req, res) => {
+  async (req: any, res) => {
     const { planId } = req.params;
     const { status, nextOccurrence } = req.body;
     try {
@@ -176,9 +217,25 @@ router.patch(
       if (status) updateData.status = status as PlanStatus;
       if (nextOccurrence) updateData.nextOccurrence = nextOccurrence;
 
-      const plan = await prisma.maintenancePlan.update({
-        where: { id: planId },
-        data: updateData,
+      const plan = await prisma.$transaction(async (tx) => {
+        const updated = await tx.maintenancePlan.update({
+          where: { id: planId },
+          data: updateData,
+        });
+        await tx.auditEvent.create({
+          data: {
+            accountId: req.authorizationContext.accountId,
+            condominiumId: req.params.condoId,
+            userId: req.user.id,
+            userEmail: req.user.email,
+            action: 'update',
+            entity: 'MaintenancePlan',
+            entityId: updated.id,
+            details: `Plano preventivo ${updated.title} atualizado${status ? ` de ${existingPlan.status} para ${updated.status}` : ''}.`,
+            ipAddress: req.ip,
+          },
+        });
+        return updated;
       });
       res.json(plan);
     } catch (error) {
@@ -194,7 +251,7 @@ router.delete(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
-  async (req, res) => {
+  async (req: any, res) => {
     const { planId } = req.params;
     try {
       const existingPlan = await prisma.maintenancePlan.findFirst({
@@ -207,8 +264,21 @@ router.delete(
         return res.status(404).json({ error: "Plano não encontrado." });
       }
 
-      await prisma.maintenancePlan.delete({
-        where: { id: planId },
+      await prisma.$transaction(async (tx) => {
+        await tx.maintenancePlan.delete({ where: { id: planId } });
+        await tx.auditEvent.create({
+          data: {
+            accountId: req.authorizationContext.accountId,
+            condominiumId: req.params.condoId,
+            userId: req.user.id,
+            userEmail: req.user.email,
+            action: 'delete',
+            entity: 'MaintenancePlan',
+            entityId: existingPlan.id,
+            details: `Plano preventivo ${existingPlan.title} removido.`,
+            ipAddress: req.ip,
+          },
+        });
       });
       res.json({ message: "Plano removido com sucesso." });
     } catch (error) {
@@ -224,9 +294,10 @@ router.patch(
   requireAuth,
   tenantGuard,
   requireRole([PlatformRole.admin, PlatformRole.syndic, PlatformRole.manager]),
-  async (req, res) => {
+  validateBody(updateEquipmentSchema),
+  async (req: any, res) => {
     const { eqId } = req.params;
-    const { name, location, category, status, lastInspection, nextInspection } = req.body;
+    const { name, location, category, status, lastInspection, nextInspection, installDate } = req.body;
     try {
       const existingEquipment = await prisma.equipment.findFirst({
         where: {
@@ -239,16 +310,33 @@ router.patch(
       }
 
       const updateData: any = {};
-      if (name) updateData.name = name;
-      if (location) updateData.location = location;
-      if (category) updateData.category = category;
-      if (status) updateData.status = status as EquipmentStatus;
-      if (lastInspection) updateData.lastInspection = lastInspection;
-      if (nextInspection) updateData.nextInspection = nextInspection;
+      if (name !== undefined) updateData.name = name;
+      if (location !== undefined) updateData.location = location;
+      if (category !== undefined) updateData.category = category;
+      if (status !== undefined) updateData.status = status as EquipmentStatus;
+      if (lastInspection !== undefined) updateData.lastInspection = lastInspection;
+      if (nextInspection !== undefined) updateData.nextInspection = nextInspection;
+      if (installDate !== undefined) updateData.installDate = installDate;
 
-      const equipment = await prisma.equipment.update({
-        where: { id: eqId },
-        data: updateData,
+      const equipment = await prisma.$transaction(async (tx) => {
+        const updated = await tx.equipment.update({
+          where: { id: eqId },
+          data: updateData,
+        });
+        await tx.auditEvent.create({
+          data: {
+            accountId: req.authorizationContext.accountId,
+            condominiumId: req.params.condoId,
+            userId: req.user.id,
+            userEmail: req.user.email,
+            action: 'update',
+            entity: 'Equipment',
+            entityId: updated.id,
+            details: `Equipamento ${updated.name} atualizado.`,
+            ipAddress: req.ip,
+          },
+        });
+        return updated;
       });
       res.json(equipment);
     } catch (error) {

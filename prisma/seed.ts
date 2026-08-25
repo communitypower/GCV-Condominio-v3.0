@@ -1,4 +1,4 @@
-import { PrismaClient, UnitType, UnitStatus, RelationshipRole, PlatformRole, EquipmentStatus, PlanFrequency, PlanStatus, MaintenanceCategory, MaintenancePriority, MaintenanceStatus, BillingStatus, AuditAction } from '@prisma/client';
+import { PrismaClient, UnitType, UnitStatus, RelationshipRole, PlatformRole, EquipmentStatus, PlanFrequency, PlanStatus, MaintenanceCategory, MaintenancePriority, MaintenanceStatus, BillingStatus, AuditAction, DocumentProcessingStatus, DocumentScanStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -398,9 +398,13 @@ async function main() {
   await prisma.documentVersion.create({
     data: {
       documentId: regDoc.id,
+      accountId: account.id,
+      condominiumId: condo.id,
       versionNumber: 1,
       filePath: "uploads/regulamento.pdf",
-      uploadedBy: "sindico@gcv.com.br"
+      uploadedBy: "sindico@gcv.com.br",
+      processingStatus: DocumentProcessingStatus.indexed,
+      scanStatus: DocumentScanStatus.clean,
     }
   });
 
@@ -416,9 +420,13 @@ async function main() {
   await prisma.documentVersion.create({
     data: {
       documentId: ataDoc.id,
+      accountId: account.id,
+      condominiumId: condo.id,
       versionNumber: 1,
       filePath: "uploads/ata_maio.pdf",
-      uploadedBy: "sindico@gcv.com.br"
+      uploadedBy: "sindico@gcv.com.br",
+      processingStatus: DocumentProcessingStatus.indexed,
+      scanStatus: DocumentScanStatus.clean,
     }
   });
 

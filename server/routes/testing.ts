@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { deleteDocumentFile } from '../services/document-storage';
+import { setSessionCookie } from '../services/session';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -9,10 +11,6 @@ function testingEnabled() {
   return process.env.NODE_ENV !== 'production'
     && process.env.ENABLE_E2E_TESTING === 'true'
     && Boolean(process.env.E2E_TEST_SECRET);
-}
-
-function isProductionLike() {
-  return process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
 }
 
 function assertTestingAccess(req: any, res: any) {
@@ -46,13 +44,7 @@ router.post('/session', async (req, res) => {
     return res.status(404).json({ error: 'User not found.' });
   }
 
-  res.cookie('gcv_session', user.id, {
-    httpOnly: true,
-    signed: true,
-    secure: isProductionLike(),
-    maxAge: 24 * 60 * 60 * 1000,
-    sameSite: 'lax',
-  });
+  setSessionCookie(res, user);
 
   res.json({
     user: {
@@ -108,8 +100,20 @@ router.post('/cleanup', async (req, res) => {
     select: { id: true },
   });
   const documentIds = documents.map((document) => document.id);
+  const documentVersions = await prisma.documentVersion.findMany({
+    where: { documentId: { in: documentIds } },
+    select: { id: true, filePath: true },
+  });
+  const documentVersionIds = documentVersions.map((version) => version.id);
+  results.aiProposals = (await prisma.aiProposal.deleteMany({
+    where: { condominiumId, OR: [{ sourceVersionId: { in: documentVersionIds } }, { title: { startsWith: TEST_PREFIX } }] },
+  })).count;
+  results.documentAuditEvents = (await prisma.auditEvent.deleteMany({
+    where: { condominiumId, OR: [{ entity: 'Document', entityId: { in: documentIds } }, { entity: 'DocumentVersion', entityId: { in: documentVersionIds } }] },
+  })).count;
   results.documentVersions = (await prisma.documentVersion.deleteMany({ where: { documentId: { in: documentIds } } })).count;
   results.documents = (await prisma.document.deleteMany({ where: { id: { in: documentIds } } })).count;
+  for (const version of documentVersions) await deleteDocumentFile(version.filePath).catch(() => undefined);
 
   const charges = await prisma.charge.findMany({
     where: {

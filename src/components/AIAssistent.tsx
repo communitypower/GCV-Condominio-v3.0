@@ -18,6 +18,7 @@ import {
 import { unitLabelById } from '../utils/displayLabels';
 
 interface AIAssistantProps {
+  condoId?: string;
   units: any[];
   billings: any[];
   maintenanceRequests: any[];
@@ -33,6 +34,27 @@ interface Message {
   role: 'user' | 'assistant';
   text: string;
   timestamp: string;
+  sources?: AssistantSource[];
+}
+
+interface AssistantSource {
+  documentId: string;
+  versionId: string;
+  title: string;
+  locator?: string;
+  excerpt?: string;
+}
+
+interface AssistantProposal {
+  id: string;
+  type: 'maintenance_plan' | 'maintenance_ticket';
+  status: string;
+  title: string;
+  payload: Record<string, unknown>;
+  citations: AssistantSource[];
+  confidence?: number;
+  createdAt: string;
+  appliedEntityId?: string | null;
 }
 
 // Simple and high-fidelity Markdown-to-HTML parser component
@@ -127,6 +149,7 @@ function MarkdownRenderer({ content }: { content: string }) {
 }
 
 export default function AIAssistent({
+  condoId,
   units,
   billings,
   maintenanceRequests,
@@ -142,16 +165,40 @@ export default function AIAssistent({
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
   const [activeTab, setActiveTab] = useState<'chat' | 'reports'>('chat');
+  const [proposals, setProposals] = useState<AssistantProposal[]>([]);
+  const [proposalBusy, setProposalBusy] = useState('');
+  const [proposalError, setProposalError] = useState('');
+  const resolvedCondoId = condoId
+    || units.find((unit) => unit.condominiumId)?.condominiumId
+    || (typeof window !== 'undefined' ? window.localStorage.getItem('gcv_active_edificio_id') : '')
+    || '';
 
   useEffect(() => {
     setMessages([
       {
         role: 'assistant',
-        text: `Olá! Eu sou o **G.C.V. Engenheiro Assistente IA**. Estou conectado à base de dados em tempo real do **${activeEdificioName}**.\n\nPosso auditar a saúde financeira, gerar roteiros de manutenção preventiva, mapear riscos operacionais ou simular relatórios estatísticos complexos para o corpo diretivo. O que deseja consultar ou gerar hoje?`,
+        text: `Olá! Eu sou o **G.C.V. Engenheiro Assistente IA** do **${activeEdificioName}**.\n\nPosso consultar o acervo documental autorizado, apresentar as fontes utilizadas e preparar rascunhos de manutenção para revisão humana. O que deseja consultar hoje?`,
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       }
     ]);
   }, [activeEdificioName]);
+
+  const loadProposals = async () => {
+    if (!resolvedCondoId) return;
+    try {
+      const response = await fetch(`/api/v1/condominiums/${resolvedCondoId}/assistant/proposals`);
+      if (!response.ok) throw new Error('Não foi possível carregar os rascunhos.');
+      const data = await response.json();
+      setProposals(Array.isArray(data) ? data : data.proposals || []);
+      setProposalError('');
+    } catch (error) {
+      setProposalError(error instanceof Error ? error.message : 'Não foi possível carregar os rascunhos.');
+    }
+  };
+
+  useEffect(() => {
+    loadProposals();
+  }, [resolvedCondoId]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -219,6 +266,18 @@ export default function AIAssistent({
     return interval;
   };
 
+  const queryAssistant = async (prompt: string) => {
+    if (!resolvedCondoId) throw new Error('Selecione um condomínio antes de consultar o assistente.');
+    const response = await fetch(`/api/v1/condominiums/${resolvedCondoId}/assistant/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || 'Falha de comunicação com o assistente.');
+    return data;
+  };
+
   // Chat message submission
   const handleSendMessage = async (customPrompt?: string) => {
     const messageToSend = customPrompt || inputMessage;
@@ -239,24 +298,12 @@ export default function AIAssistent({
     const intervalRef = triggerLoadingSteps(false);
 
     try {
-      const response = await fetch('/api/gemini/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: messageToSend,
-          contextData: getCondoContextData()
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Falha de comunicação com o servidor ');
-      }
-
-      const data = await response.json();
+      const data = await queryAssistant(messageToSend);
       
       const assistantMsg: Message = {
         role: 'assistant',
-        text: data.text || 'Desculpe, não consegui processar sua consulta.',
+        text: data.text || data.answer || 'Desculpe, não consegui processar sua consulta.',
+        sources: Array.isArray(data.sources) ? data.sources : [],
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, assistantMsg]);
@@ -301,24 +348,12 @@ export default function AIAssistent({
     setMessages(prev => [...prev, userMsg]);
 
     try {
-      const response = await fetch('/api/gemini/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: promptText,
-          contextData: getCondoContextData()
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Falha ao gerar relatório analítico.');
-      }
-
-      const data = await response.json();
+      const data = await queryAssistant(promptText);
       
       const assistantMsg: Message = {
         role: 'assistant',
-        text: data.text || 'Erro operacional na geração do relatório.',
+        text: data.text || data.answer || 'Erro operacional na geração do relatório.',
+        sources: Array.isArray(data.sources) ? data.sources : [],
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, assistantMsg]);
@@ -335,6 +370,46 @@ export default function AIAssistent({
       clearInterval(intervalRef);
       setIsLoading(false);
     }
+  };
+
+  const createProposal = async (type: AssistantProposal['type'], message: Message) => {
+    if (!resolvedCondoId) return;
+    const operation = `create-${type}`;
+    setProposalBusy(operation); setProposalError('');
+    try {
+      const sourceVersionIds = [...new Set((message.sources || []).map((source) => source.versionId))];
+      const response = await fetch(`/api/v1/condominiums/${resolvedCondoId}/assistant/proposals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, prompt: message.text, sourceVersionIds }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || 'Não foi possível criar o rascunho.');
+      await loadProposals();
+      setActiveTab('reports');
+    } catch (error) {
+      setProposalError(error instanceof Error ? error.message : 'Não foi possível criar o rascunho.');
+    } finally { setProposalBusy(''); }
+  };
+
+  const decideProposal = async (proposal: AssistantProposal, decision: 'approve' | 'reject') => {
+    if (!resolvedCondoId) return;
+    const reviewNotes = decision === 'reject'
+      ? window.prompt('Informe o motivo da rejeição deste rascunho:')?.trim()
+      : undefined;
+    if (decision === 'reject' && !reviewNotes) return;
+    setProposalBusy(`${decision}-${proposal.id}`); setProposalError('');
+    try {
+      const response = await fetch(`/api/v1/condominiums/${resolvedCondoId}/assistant/proposals/${proposal.id}/${decision}`, {
+        method: 'POST',
+        ...(reviewNotes ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewNotes }) } : {}),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || 'Não foi possível registrar a decisão.');
+      await loadProposals();
+    } catch (error) {
+      setProposalError(error instanceof Error ? error.message : 'Não foi possível registrar a decisão.');
+    } finally { setProposalBusy(''); }
   };
 
   // Helper helper to copy text
@@ -363,18 +438,22 @@ export default function AIAssistent({
             <span className="text-[#10b981]"><Sparkles className="w-8 h-8 animate-pulse" /></span>
             GCV Co-Pilot Inteligência Artificial
           </h1>
-          <p className="text-zinc-400 text-sm mt-1">Módulo LLM em tempo real conectado ao banco de dados predial de alta fidelidade</p>
+          <p className="text-zinc-400 text-sm mt-1">Consulta ao acervo autorizado com fontes rastreáveis e revisão humana</p>
         </div>
 
         {/* Action controllers buttons */}
-        <div className="flex bg-[#14161a] border border-zinc-800 p-1 rounded-lg shrink-0">
+        <div role="tablist" aria-label="Modos do assistente" className="flex bg-[#14161a] border border-zinc-800 p-1 rounded-lg shrink-0">
           <button
+            role="tab"
+            aria-selected={activeTab === 'chat'}
             onClick={() => setActiveTab('chat')}
             className={`px-4 py-1.5 rounded text-xs font-semibold transition-all ${activeTab === 'chat' ? 'bg-[#10b981]/20 text-[#10b981] font-bold' : 'text-zinc-400 hover:text-white'}`}
           >
             Consultas & Conversa
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === 'reports'}
             onClick={() => setActiveTab('reports')}
             className={`px-4 py-1.5 rounded text-xs font-semibold transition-all ${activeTab === 'reports' ? 'bg-[#10b981]/20 text-[#10b981] font-bold' : 'text-zinc-400 hover:text-white'}`}
           >
@@ -431,7 +510,7 @@ export default function AIAssistent({
               <span>Gemini 3.5-Flash</span>
             </div>
             <p className="text-[10px] text-zinc-500 leading-normal">
-              O assistente lê e compreende de forma integrada toda a base JSON de unidades, boletos, equipamentos e ordens preventivas.
+              O assistente recupera somente trechos documentais autorizados para o condomínio ativo e apresenta suas fontes.
             </p>
           </div>
         </div>
@@ -441,7 +520,7 @@ export default function AIAssistent({
           
           {/* Active: Relatórios Structurer Form */}
           {activeTab === 'reports' ? (
-            <div className="p-6 h-full flex flex-col justify-between overflow-y-auto space-y-6">
+            <div role="tabpanel" className="p-6 h-full flex flex-col overflow-y-auto space-y-6">
               <div className="space-y-4">
                 <div>
                   <h2 className="text-lg font-bold text-white font-sans">Portal Estruturador de Relatórios Técnicos</h2>
@@ -502,22 +581,37 @@ export default function AIAssistent({
                 </div>
               </div>
 
+              <section className="border-t border-zinc-800 pt-5 space-y-3" aria-labelledby="proposal-heading">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h2 id="proposal-heading" className="text-sm font-bold text-white">Rascunhos gerados pela IA</h2><p className="text-xs text-zinc-400 mt-1">Revise fontes e conteúdo antes de criar qualquer registro operacional.</p></div>
+                  <button type="button" onClick={loadProposals} className="p-2 text-zinc-400 hover:text-emerald-300" title="Atualizar rascunhos" aria-label="Atualizar rascunhos"><RotateCcw className="w-4 h-4" /></button>
+                </div>
+                {proposalError && <p role="alert" className="text-xs text-red-300 border border-red-900 bg-red-950/20 rounded p-3">{proposalError}</p>}
+                <div className="space-y-2">
+                  {proposals.map((proposal) => <article key={proposal.id} className="border border-zinc-800 bg-zinc-950/30 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="text-[10px] font-bold uppercase text-amber-300 border border-amber-800 px-2 py-0.5 rounded">{proposal.status}</span><span className="text-[10px] uppercase text-zinc-500">{proposal.type === 'maintenance_plan' ? 'Plano de manutenção' : 'Ordem de serviço'}</span></div><h3 className="text-sm font-semibold text-white mt-2 truncate">{proposal.title}</h3><p className="text-xs text-zinc-500 mt-1">{proposal.citations?.length || 0} fonte(s){typeof proposal.confidence === 'number' ? ` · confiança ${Math.round(proposal.confidence * 100)}%` : ''}</p></div>
+                    {proposal.status === 'draft' || proposal.status === 'in_review' ? <div className="flex gap-2"><button type="button" disabled={Boolean(proposalBusy)} onClick={() => decideProposal(proposal, 'reject')} className="px-3 py-2 text-xs font-semibold border border-zinc-700 text-zinc-300 rounded hover:border-red-700 hover:text-red-300 disabled:opacity-50">Rejeitar</button><button type="button" disabled={Boolean(proposalBusy)} onClick={() => decideProposal(proposal, 'approve')} className="px-3 py-2 text-xs font-bold bg-emerald-600 text-white rounded hover:bg-emerald-500 disabled:opacity-50">Revisar e aprovar</button></div> : proposal.appliedEntityId ? <span className="text-xs text-emerald-300">Registro criado</span> : null}
+                  </article>)}
+                  {!proposals.length && !proposalError && <div className="border border-dashed border-zinc-800 rounded-lg p-6 text-center text-xs text-zinc-500">Nenhum rascunho gerado.</div>}
+                </div>
+              </section>
+
               <div className="p-4 bg-zinc-950/30 border border-zinc-850 rounded-xl flex items-start gap-3">
                 <FileText className="w-5 h-5 text-[#D4AF37] shrink-0 mt-0.5" />
                 <div className="space-y-1 text-left">
                   <p className="text-xs font-bold text-white">Como funciona este compilador?</p>
                   <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Nossa IA lê de forma concatenada todas as unidades cadastradas, boletos emitidos em atraso, equipamentos em alerta de inspeção e fluxos de pagamentos para construir uma auditoria formal. O processo leva em torno de 3 segundos.
+                    O assistente consulta o acervo autorizado no servidor, retorna evidências rastreáveis e mantém qualquer plano ou ordem como rascunho até a revisão responsável.
                   </p>
                 </div>
               </div>
             </div>
           ) : (
             // Active: Chat Container (Default View)
-            <div className="h-full flex flex-col min-h-0 justify-between">
+            <div role="tabpanel" className="h-full flex flex-col min-h-0 justify-between">
               
               {/* Chat Viewport Area */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 min-h-0 bg-[#0C0E11]/40">
+              <div role="log" aria-live="polite" aria-busy={isLoading} aria-label="Conversa com o assistente" className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 min-h-0 bg-[#0C0E11]/40">
                 {messages.map((message, i) => (
                   <div key={i} className={`flex items-start gap-3 max-w-[85%] ${message.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
                     
@@ -541,6 +635,23 @@ export default function AIAssistent({
                       <div className="text-xs text-zinc-200">
                         <MarkdownRenderer content={message.text} />
                       </div>
+
+                      {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
+                        <div className="border-t border-zinc-800 pt-3 mt-3 space-y-2" aria-label="Fontes consultadas">
+                          <p className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-emerald-400" />Fontes</p>
+                          {message.sources.map((source, sourceIndex) => <div key={`${source.versionId}-${sourceIndex}`} className="bg-zinc-900/70 border border-zinc-800 rounded p-2.5">
+                            <div className="flex items-start justify-between gap-3"><strong className="text-[11px] text-white">{source.title}</strong>{source.locator && <span className="text-[10px] text-emerald-300 shrink-0">{source.locator}</span>}</div>
+                            {source.excerpt && <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">{source.excerpt}</p>}
+                          </div>)}
+                        </div>
+                      )}
+
+                      {message.role === 'assistant' && i !== 0 && message.sources && message.sources.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          <button type="button" disabled={Boolean(proposalBusy)} onClick={() => createProposal('maintenance_plan', message)} className="text-[10px] font-bold text-emerald-300 border border-emerald-900 px-2.5 py-1.5 rounded hover:bg-emerald-950/40 disabled:opacity-50">Criar rascunho de plano</button>
+                          <button type="button" disabled={Boolean(proposalBusy)} onClick={() => createProposal('maintenance_ticket', message)} className="text-[10px] font-bold text-emerald-300 border border-emerald-900 px-2.5 py-1.5 rounded hover:bg-emerald-950/40 disabled:opacity-50">Criar rascunho de OS</button>
+                        </div>
+                      )}
 
                       {/* Utility Action Hover bar for bot logs */}
                       {message.role === 'assistant' && i !== 0 && (

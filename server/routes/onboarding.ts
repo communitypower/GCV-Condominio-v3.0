@@ -6,21 +6,10 @@ import { validateBody } from '../middleware/validation';
 import { isDomainError } from '../services/domain-errors';
 import { acceptInvitation, inspectInvitation } from '../services/invitations';
 import { onboardCondominium } from '../services/onboarding';
+import { setSessionCookie } from '../services/session';
 
 const router = Router();
 const prisma = new PrismaClient();
-const isProductionLike = () => process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
-
-function setSessionCookie(res: any, userId: string) {
-  res.cookie('gcv_session', userId, {
-    httpOnly: true,
-    signed: true,
-    secure: isProductionLike(),
-    maxAge: 24 * 60 * 60 * 1000,
-    sameSite: 'lax',
-  });
-}
-
 const publicAcceptSchema = z.object({
   password: z.string().min(10).max(128),
   name: z.string().trim().min(1).max(160).optional(),
@@ -65,7 +54,10 @@ router.post(
         ...req.body,
         ipAddress: req.ip,
       });
-      if (accepted.acceptedById) setSessionCookie(res, accepted.acceptedById);
+      if (accepted.acceptedById) {
+        const user = await prisma.user.findUniqueOrThrow({ where: { id: accepted.acceptedById } });
+        setSessionCookie(res, user);
+      }
       res.json(accepted);
     } catch (error) {
       handleError(res, error, 'Accept Invitation');

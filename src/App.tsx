@@ -69,6 +69,15 @@ interface LoggedInUser {
   isSystemAdmin?: boolean;
 }
 
+interface PublicFeatureConfig {
+  aiAssistant: boolean;
+  documentIngestion: boolean;
+  githubIntegration: boolean;
+  demoExports: boolean;
+  microsoftLogin: boolean;
+  passwordReset: boolean;
+}
+
 const administrativeRoles = new Set(['admin', 'syndic']);
 const staffRoles = new Set(['staff', 'manager', 'council_member', 'accountant', 'doorman', 'vendor']);
 const uiRoleFor = (role?: string): LoggedInUser['role'] =>
@@ -109,6 +118,14 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [features, setFeatures] = useState<PublicFeatureConfig>({
+    aiAssistant: false,
+    documentIngestion: false,
+    githubIntegration: false,
+    demoExports: false,
+    microsoftLogin: false,
+    passwordReset: false,
+  });
 
   // GitHub integration states
   const [githubToken, setGithubToken] = useState<string | null>(null);
@@ -129,6 +146,12 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [authView, setAuthView] = useState<'login' | 'password-reset-request'>('login');
+  const [passwordResetMessage, setPasswordResetMessage] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetPasswordConfirmation, setResetPasswordConfirmation] = useState('');
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
+  const [resetPasswordComplete, setResetPasswordComplete] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [microsoftLoading, setMicrosoftLoading] = useState(false);
 
@@ -161,6 +184,11 @@ export default function App() {
 
   // Load user session on mount
   useEffect(() => {
+    fetch('/api/v1/config')
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Config unavailable')))
+      .then((config) => setFeatures((current) => ({ ...current, ...(config.features || {}) })))
+      .catch(() => undefined);
+
     const checkSession = async () => {
       try {
         const response = await fetch('/api/v1/auth/me');
@@ -1103,6 +1131,59 @@ export default function App() {
     }
   };
 
+  const handlePasswordResetRequest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!loginEmail.trim()) return;
+    setLoginLoading(true);
+    setLoginError(null);
+    setPasswordResetMessage(null);
+    try {
+      await fetch('/api/v1/auth/password-reset/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail.trim() }),
+      });
+      setPasswordResetMessage('Se o e-mail estiver cadastrado, você receberá instruções para redefinir a senha.');
+    } catch {
+      setPasswordResetMessage('Se o e-mail estiver cadastrado, você receberá instruções para redefinir a senha.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handlePasswordResetComplete = async (event: React.FormEvent, token: string) => {
+    event.preventDefault();
+    setResetPasswordError(null);
+    if (resetPassword !== resetPasswordConfirmation) {
+      setResetPasswordError('As senhas informadas não coincidem.');
+      return;
+    }
+    if (resetPassword.length < 12 || !/[a-z]/.test(resetPassword) || !/[A-Z]/.test(resetPassword) || !/[0-9]/.test(resetPassword)) {
+      setResetPasswordError('Use ao menos 12 caracteres, incluindo letra maiúscula, minúscula e número.');
+      return;
+    }
+
+    setLoginLoading(true);
+    try {
+      const response = await fetch('/api/v1/auth/password-reset/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password: resetPassword }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || 'Não foi possível redefinir a senha.');
+      setResetPasswordComplete(true);
+      setResetPassword('');
+      setResetPasswordConfirmation('');
+      setUser(null);
+      localStorage.removeItem('gcv_logged_user');
+    } catch (error) {
+      setResetPasswordError(error instanceof Error ? error.message : 'Não foi possível redefinir a senha.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
   const handleMockLogin = async (selectedUser: LoggedInUser) => {
     try {
       const response = await fetch('/api/v1/auth/mock-login', {
@@ -1273,6 +1354,56 @@ export default function App() {
     return <InvitationAcceptance token={decodeURIComponent(invitationToken)} />;
   }
 
+  const resetToken = window.location.pathname === '/reset-password'
+    ? new URLSearchParams(window.location.search).get('token')
+    : null;
+  if (window.location.pathname === '/reset-password') {
+    return (
+      <main className="min-h-screen bg-[#0A0B0D] flex items-center justify-center p-6 text-slate-300 font-sans">
+        <section className="w-full max-w-md bg-[#0F1115] border border-zinc-800 rounded-xl p-6 sm:p-8 space-y-6" aria-labelledby="reset-password-title">
+          <div className="space-y-2">
+            <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Acesso GCV</p>
+            <h1 id="reset-password-title" className="text-xl font-bold text-white">Definir nova senha</h1>
+          </div>
+
+          {!resetToken ? (
+            <div className="space-y-4" role="alert">
+              <p className="text-sm text-red-300">Link de recuperação inválido ou incompleto.</p>
+              <a href="/" className="inline-flex text-sm font-semibold text-emerald-400 hover:text-emerald-300">Voltar ao login</a>
+            </div>
+          ) : resetPasswordComplete ? (
+            <div className="space-y-4" aria-live="polite">
+              <p className="text-sm text-emerald-300">Senha redefinida com sucesso. Entre novamente com sua nova senha.</p>
+              <button
+                type="button"
+                onClick={() => { window.history.replaceState({}, '', '/'); window.location.reload(); }}
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-bold text-sm py-3 rounded-md"
+              >
+                Ir para o login
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={(event) => handlePasswordResetComplete(event, resetToken)} className="space-y-4">
+              {resetPasswordError && <div role="alert" className="p-3 bg-red-950/30 border border-red-900/60 rounded-md text-red-300 text-sm">{resetPasswordError}</div>}
+              <div className="space-y-1.5">
+                <label htmlFor="reset-password" className="text-xs font-semibold text-zinc-300">Nova senha</label>
+                <input id="reset-password" data-testid="reset-password" type="password" autoComplete="new-password" required minLength={12} value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded-md px-3 py-3 text-sm text-white focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="reset-password-confirmation" className="text-xs font-semibold text-zinc-300">Confirmar nova senha</label>
+                <input id="reset-password-confirmation" data-testid="reset-password-confirmation" type="password" autoComplete="new-password" required minLength={12} value={resetPasswordConfirmation} onChange={(event) => setResetPasswordConfirmation(event.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded-md px-3 py-3 text-sm text-white focus:outline-none focus:border-emerald-500" />
+              </div>
+              <p className="text-xs text-zinc-400">Mínimo de 12 caracteres, com letra maiúscula, minúscula e número.</p>
+              <button data-testid="reset-password-submit" type="submit" disabled={loginLoading} className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-zinc-950 font-bold text-sm py-3 rounded-md">
+                {loginLoading ? 'Redefinindo...' : 'Redefinir senha'}
+              </button>
+            </form>
+          )}
+        </section>
+      </main>
+    );
+  }
+
   if (!user) {
     const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
@@ -1319,7 +1450,7 @@ export default function App() {
                         {googleLoading ? <span>Conectando...</span> : <span>Continuar com Google</span>}
                       </button>
 
-                      <button
+                      {features.microsoftLogin && <button
                         type="button"
                         data-testid="oauth-microsoft"
                         disabled={googleLoading || microsoftLoading || loginLoading}
@@ -1333,7 +1464,7 @@ export default function App() {
                           <path d="M12 12h11v11H12z" fill="#FFB900"/>
                         </svg>
                         {microsoftLoading ? <span>Conectando...</span> : <span>Continuar com Microsoft</span>}
-                      </button>
+                      </button>}
                     </div>
 
                     <div className="relative flex py-2 items-center">
@@ -1342,7 +1473,7 @@ export default function App() {
                       <div className="flex-grow border-t border-zinc-900"></div>
                     </div>
 
-                    <form onSubmit={handleCredentialsLogin} className="space-y-4">
+                    <form onSubmit={authView === 'login' ? handleCredentialsLogin : handlePasswordResetRequest} className="space-y-4">
                       {loginError && (
                         <div className="p-3 bg-red-950/20 border border-red-900/50 rounded-xl text-red-400 text-xs font-semibold">
                           {loginError}
@@ -1362,7 +1493,7 @@ export default function App() {
                         />
                       </div>
 
-                      <div className="space-y-1.5 text-left">
+                      {authView === 'login' && <div className="space-y-1.5 text-left">
                         <label className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase block">Senha</label>
                         <input
                           data-testid="login-password"
@@ -1373,23 +1504,42 @@ export default function App() {
                           placeholder="Sua senha"
                           className="w-full bg-zinc-950/70 border border-zinc-850 focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-650 focus:outline-none transition-all"
                         />
-                      </div>
+                      </div>}
+
+                      {passwordResetMessage && authView === 'password-reset-request' && (
+                        <div role="status" aria-live="polite" className="p-3 bg-emerald-950/20 border border-emerald-900/50 rounded-xl text-emerald-300 text-xs font-semibold">
+                          {passwordResetMessage}
+                        </div>
+                      )}
 
                       <button
                         type="submit"
-                        data-testid="login-submit"
+                        data-testid={authView === 'login' ? 'login-submit' : 'password-reset-request-submit'}
                         disabled={loginLoading || googleLoading || microsoftLoading}
                         className="w-full bg-[#10b981] hover:bg-[#0ea572] disabled:bg-emerald-850 disabled:text-zinc-400 text-white font-bold text-xs uppercase tracking-wider py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-950/25"
                       >
                         {loginLoading ? (
                           <>
                             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Autenticando...</span>
+                            <span>{authView === 'login' ? 'Autenticando...' : 'Enviando...'}</span>
                           </>
                         ) : (
-                          <span>Entrar com E-mail</span>
+                          <span>{authView === 'login' ? 'Entrar com E-mail' : 'Enviar instruções'}</span>
                         )}
                       </button>
+
+                      {features.passwordReset && <button
+                        type="button"
+                        data-testid="password-reset-toggle"
+                        onClick={() => {
+                          setAuthView((current) => current === 'login' ? 'password-reset-request' : 'login');
+                          setLoginError(null);
+                          setPasswordResetMessage(null);
+                        }}
+                        className="w-full text-xs font-semibold text-emerald-400 hover:text-emerald-300"
+                      >
+                        {authView === 'login' ? 'Esqueci minha senha' : 'Voltar ao login'}
+                      </button>}
                     </form>
                   </div>
 
@@ -1612,9 +1762,9 @@ export default function App() {
                 <button data-testid="nav-dashboard" onClick={() => setActiveTab('dashboard')} className={navBtnStyle('dashboard')}>
                   <Building className="w-3.5 h-3.5" /> Meu Painel
                 </button>
-                <button data-testid="nav-ia_assistant" onClick={() => setActiveTab('ia_assistant')} className={navBtnStyle('ia_assistant')}>
+                {features.aiAssistant && <button data-testid="nav-ia_assistant" onClick={() => setActiveTab('ia_assistant')} className={navBtnStyle('ia_assistant')}>
                   <Sparkles className="w-3.5 h-3.5 text-[#10b981]" /> Assistente IA ✨
-                </button>
+                </button>}
                 <button data-testid="nav-ordens" onClick={() => setActiveTab('ordens')} className={navBtnStyle('ordens')}>
                   <Wrench className="w-3.5 h-3.5" /> Solicitar Reparo
                 </button>
@@ -1626,12 +1776,12 @@ export default function App() {
             /* COMPREHENSIVE STAFF & ADMIN SIDEBAR */
             <>
               {/* Special IA Intelligence Group */}
-              <div className="space-y-1">
+              {features.aiAssistant && <div className="space-y-1">
                 <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981] flex items-center gap-1">CO-PILOT IA</span>
                 <button data-testid="nav-ia_assistant" onClick={() => setActiveTab('ia_assistant')} className={navBtnStyle('ia_assistant')}>
                   <Sparkles className="w-3.5 h-3.5 text-[#10b981]" /> Assistente IA ✨
                 </button>
-              </div>
+              </div>}
 
               {/* Group 1: OPERACIONAL */}
               <div className="space-y-1">
@@ -1710,7 +1860,7 @@ export default function App() {
                     <Users className="w-3.5 h-3.5" /> Corpo Diretivo / Staff
                   </button>
                 )}
-                {canManageData && (
+                {canManageData && features.documentIngestion && (
                   <button data-testid="nav-carga-dados" onClick={() => setActiveTab('carga_dados')} className={navBtnStyle('carga_dados')}>
                     <Database className="w-3.5 h-3.5" /> Carga de Dados
                   </button>
@@ -1718,7 +1868,7 @@ export default function App() {
               </div>
 
               {/* Group 6: SISTEMA */}
-              {canAdminister && (
+              {canAdminister && features.githubIntegration && (
                 <div className="space-y-1">
                   <span className="px-4 block mb-1 uppercase tracking-widest text-[#10b981]">INTEGRAÇÕES</span>
                   <button data-testid="nav-github" onClick={() => setActiveTab('github')} className={navBtnStyle('github')}>
@@ -1866,9 +2016,21 @@ export default function App() {
                           </div>
                           <div className="text-right">
                             <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                              req.status === 'completed' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/30' : 'bg-amber-950/20 text-amber-500 border border-amber-900/40'
+                              req.status === 'resolved'
+                                ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/30'
+                                : req.status === 'cancelled'
+                                  ? 'bg-zinc-900 text-zinc-400 border border-zinc-700'
+                                  : req.status === 'in_progress'
+                                    ? 'bg-blue-950/30 text-blue-300 border border-blue-900/40'
+                                    : 'bg-amber-950/20 text-amber-500 border border-amber-900/40'
                             }`}>
-                              {req.status === 'completed' ? 'Resolvido' : req.status === 'in_progress' ? 'Em Progresso' : 'Aberto'}
+                              {req.status === 'resolved'
+                                ? 'Resolvido'
+                                : req.status === 'cancelled'
+                                  ? 'Cancelado'
+                                  : req.status === 'in_progress'
+                                    ? 'Em progresso'
+                                    : 'Reportado'}
                             </span>
                           </div>
                         </div>
@@ -1946,7 +2108,7 @@ export default function App() {
             <Documentation condoId={activeEdificioId} />
           )}
 
-          {activeTab === 'carga_dados' && (
+          {activeTab === 'carga_dados' && features.documentIngestion && (
             <DataImports condoId={activeEdificioId} />
           )}
 
@@ -1977,7 +2139,11 @@ export default function App() {
           )}
 
           {activeTab === 'condominos' && (
-            <Condominos condoId={activeEdificioId} units={units} />
+            <Condominos
+              condoId={activeEdificioId}
+              units={units}
+              onNavigateToUnits={() => setActiveTab('edificios')}
+            />
           )}
 
           {activeTab === 'cobrancas' && (
@@ -2013,8 +2179,9 @@ export default function App() {
             <UsersList condoId={activeEdificioId} />
           )}
 
-          {activeTab === 'ia_assistant' && (
+          {activeTab === 'ia_assistant' && features.aiAssistant && (
             <AIAssistent 
+              condoId={activeEdificioId}
               units={units}
               billings={billings}
               maintenanceRequests={maintenanceRequests}
@@ -2027,7 +2194,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'github' && (
+          {activeTab === 'github' && features.githubIntegration && (
             <GitHubIntegration
               githubToken={githubToken}
               githubProfile={githubProfile}

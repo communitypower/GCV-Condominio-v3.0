@@ -11,6 +11,10 @@ export default function OperationLogs({
   logs,
   onAddLog
 }: OperationLogsProps) {
+  const hideInternalIdentifiers = (value: string) => value.replace(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi,
+    'registro interno'
+  );
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
@@ -103,12 +107,12 @@ export default function OperationLogs({
           <div key={l.id} className="bg-[#14161b] rounded-xl border border-zinc-850 p-5 shadow-sm space-y-3">
             <div className="flex justify-between items-start">
               <div className="space-y-0.5">
-                <h3 className="font-bold text-base text-white">{l.title}</h3>
+                <h3 className="font-bold text-base text-white">{hideInternalIdentifiers(l.title)}</h3>
               </div>
               <div>{getLogTypeBadge(l.type)}</div>
             </div>
 
-            <p className="text-zinc-300 text-xs leading-relaxed">{l.content}</p>
+            <p className="text-zinc-300 text-xs leading-relaxed">{hideInternalIdentifiers(l.content)}</p>
 
             <div className="pt-2 border-t border-zinc-850/50 flex flex-wrap items-center justify-between text-[11px] text-zinc-500">
               <div className="flex items-center gap-1.5">

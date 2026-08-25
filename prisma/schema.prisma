@@ -139,6 +139,37 @@ enum DataImportStatus {
   failed
 }
 
+enum DocumentProcessingStatus {
+  queued
+  scanning
+  extracting
+  indexed
+  partial
+  failed
+  cancelled
+}
+
+enum DocumentScanStatus {
+  pending
+  clean
+  unavailable
+  infected
+  failed
+}
+
+enum AiProposalType {
+  maintenance_plan
+  maintenance_ticket
+}
+
+enum AiProposalStatus {
+  draft
+  in_review
+  approved
+  rejected
+  applied
+}
+
 enum ProcurementStatus {
   pending
   approved
@@ -171,27 +202,44 @@ model Account {
   paymentOrders    PaymentOrder[]
   announcements    Announcement[]
   invitations      Invitation[]
+  documentChunks   DocumentChunk[]
+  aiProposals      AiProposal[]
 }
 
 model User {
-  id                    String            @id @default(uuid())
-  email                 String            @unique
+  id                    String               @id @default(uuid())
+  email                 String               @unique
   passwordHash          String? // For dev login mock authentication, optional for social login users
-  isSystemAdmin         Boolean           @default(false)
-  personId              String?           @unique
-  person                Person?           @relation(fields: [personId], references: [id])
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  sessionVersion        Int                  @default(0)
+  isSystemAdmin         Boolean              @default(false)
+  personId              String?              @unique
+  person                Person?              @relation(fields: [personId], references: [id])
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
   memberships           Membership[]
   oauthAccounts         OauthAccount[]
-  requestedPurchases    PurchaseRequest[] @relation("PurchaseRequester")
-  decidedPurchases      PurchaseRequest[] @relation("PurchaseDecisionActor")
-  createdPayments       PaymentOrder[]    @relation("PaymentCreator")
-  paidPayments          PaymentOrder[]    @relation("PaymentActor")
-  authoredAnnouncements Announcement[]    @relation("AnnouncementAuthor")
-  invitationsSent       Invitation[]      @relation("InvitationSender")
-  invitationsAccepted   Invitation[]      @relation("InvitationAcceptor")
-  membershipsRevoked    Membership[]      @relation("MembershipRevoker")
+  requestedPurchases    PurchaseRequest[]    @relation("PurchaseRequester")
+  decidedPurchases      PurchaseRequest[]    @relation("PurchaseDecisionActor")
+  createdPayments       PaymentOrder[]       @relation("PaymentCreator")
+  paidPayments          PaymentOrder[]       @relation("PaymentActor")
+  authoredAnnouncements Announcement[]       @relation("AnnouncementAuthor")
+  invitationsSent       Invitation[]         @relation("InvitationSender")
+  invitationsAccepted   Invitation[]         @relation("InvitationAcceptor")
+  membershipsRevoked    Membership[]         @relation("MembershipRevoker")
+  passwordResetTokens   PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  requestedIp String?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, expiresAt])
 }
 
 model OauthAccount {
@@ -239,6 +287,8 @@ model Condominium {
   announcements    Announcement[]
   auditEvents      AuditEvent[]
   invitations      Invitation[]
+  documentChunks   DocumentChunk[]
+  aiProposals      AiProposal[]
 }
 
 model PurchaseRequest {
@@ -340,6 +390,7 @@ model Building {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   units         Unit[]
+  documents     Document[]
 
   @@unique([condominiumId, name])
 }
@@ -458,6 +509,7 @@ model MaintenanceTicket {
   updatedAt     DateTime              @updatedAt
   comments      TicketComment[]
   statusHistory TicketStatusHistory[]
+  documents     Document[]
 }
 
 model TicketComment {
@@ -487,12 +539,13 @@ model Equipment {
   location       String
   category       String
   status         EquipmentStatus
-  lastInspection DateTime
-  nextInspection DateTime
-  installDate    DateTime
+  lastInspection DateTime?
+  nextInspection DateTime?
+  installDate    DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   plans          MaintenancePlan[]
+  documents      Document[]
 }
 
 model MaintenancePlan {
@@ -508,6 +561,7 @@ model MaintenancePlan {
   status         PlanStatus
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  documents      Document[]
 }
 
 model BillingPeriod {
@@ -556,28 +610,118 @@ model ChargeLineItem {
 }
 
 model Document {
-  id            String            @id @default(uuid())
-  condominiumId String
-  condominium   Condominium       @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
-  unitId        String?
-  unit          Unit?             @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  title         String
-  category      String
-  requiredRole  PlatformRole      @default(resident)
-  filePath      String
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  versions      DocumentVersion[]
+  id                  String             @id @default(uuid())
+  condominiumId       String
+  condominium         Condominium        @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  unitId              String?
+  unit                Unit?              @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  buildingId          String?
+  building            Building?          @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  equipmentId         String?
+  equipment           Equipment?         @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  maintenancePlanId   String?
+  maintenancePlan     MaintenancePlan?   @relation(fields: [maintenancePlanId], references: [id], onDelete: SetNull)
+  maintenanceTicketId String?
+  maintenanceTicket   MaintenanceTicket? @relation(fields: [maintenanceTicketId], references: [id], onDelete: SetNull)
+  title               String
+  category            String
+  requiredRole        PlatformRole       @default(resident)
+  filePath            String
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deletedAt           DateTime?
+  retentionUntil      DateTime?
+  legalHold           Boolean            @default(false)
+  purgeRequestedAt    DateTime?
+  purgedAt            DateTime?
+  versions            DocumentVersion[]
+
+  @@index([condominiumId, category, updatedAt])
+  @@index([buildingId])
+  @@index([equipmentId])
+  @@index([maintenancePlanId])
+  @@index([maintenanceTicketId])
+  @@index([deletedAt, retentionUntil, legalHold])
 }
 
 model DocumentVersion {
-  id            String   @id @default(uuid())
-  documentId    String
-  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  versionNumber Int
-  filePath      String
-  uploadedBy    String
-  createdAt     DateTime @default(now())
+  id               String                   @id @default(uuid())
+  documentId       String
+  document         Document                 @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  accountId        String
+  condominiumId    String
+  versionNumber    Int
+  filePath         String
+  originalFileName String?
+  mimeType         String?
+  sizeBytes        Int?
+  checksum         String?
+  scanStatus       DocumentScanStatus       @default(pending)
+  processingStatus DocumentProcessingStatus @default(queued)
+  processingError  String?
+  metadata         Json?
+  uploadedBy       String
+  extractedAt      DateTime?
+  createdAt        DateTime                 @default(now())
+  chunks           DocumentChunk[]
+  proposals        AiProposal[]
+
+  @@unique([documentId, versionNumber])
+  @@unique([condominiumId, checksum])
+  @@unique([id, accountId, condominiumId])
+  @@index([condominiumId, processingStatus, createdAt])
+}
+
+model DocumentChunk {
+  id            String          @id @default(uuid())
+  accountId     String
+  account       Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  condominiumId String
+  condominium   Condominium     @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  versionId     String
+  version       DocumentVersion @relation(fields: [versionId, accountId, condominiumId], references: [id, accountId, condominiumId], onDelete: Cascade)
+  ordinal       Int
+  content       String
+  sourceLocator String
+  quoteHash     String
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+
+  @@unique([versionId, ordinal])
+  @@index([condominiumId, createdAt])
+  @@index([accountId, condominiumId])
+}
+
+model AiProposal {
+  id                 String           @id @default(uuid())
+  accountId          String
+  account            Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  condominiumId      String
+  condominium        Condominium      @relation(fields: [condominiumId], references: [id], onDelete: Cascade)
+  sourceVersionId    String?
+  sourceVersion      DocumentVersion? @relation(fields: [sourceVersionId], references: [id], onDelete: SetNull)
+  type               AiProposalType
+  status             AiProposalStatus @default(draft)
+  title              String
+  rationale          String
+  payload            Json
+  citations          Json
+  confidence         Float
+  contentFingerprint String
+  provider           String
+  model              String
+  promptVersion      String
+  createdByEmail     String
+  reviewedByEmail    String?
+  reviewedAt         DateTime?
+  reviewNotes        String?
+  appliedEntityId    String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([condominiumId, type, contentFingerprint])
+  @@index([condominiumId, status, createdAt])
+  @@index([accountId, condominiumId])
 }
 
 model AuditEvent {

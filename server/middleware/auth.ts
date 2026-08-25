@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { MembershipStatus, PrismaClient, PlatformRole } from '@prisma/client';
 import { hasPlatformAdminAccess } from '../services/system-admin';
+import { parseSession } from '../services/session';
 
 const prisma = new PrismaClient();
 
@@ -42,22 +43,20 @@ function membershipsForScope(
 }
 
 export const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  // Read signed cookie
-  const sessionUserId = req.signedCookies?.gcv_session;
-
-  if (!sessionUserId) {
+  const session = parseSession(req.signedCookies?.gcv_session);
+  if (!session) {
     return res.status(401).json({ error: "Não autenticado." });
   }
 
   try {
     const user = await prisma.user.findUnique({
-      where: { id: sessionUserId },
+      where: { id: session.id },
       include: {
         memberships: true,
       },
     });
 
-    if (!user) {
+    if (!user || user.sessionVersion !== session.sessionVersion) {
       return res.status(401).json({ error: "Usuário não encontrado ou sessão inválida." });
     }
 

@@ -1,5 +1,5 @@
 import { expect, request as playwrightRequest, test } from '@playwright/test';
-import { createTestBuilding, createTestUnit, e2eSessionLogin, expectStatus, firstCondominium } from './helpers/api';
+import { createTestBuilding, createTestUnit, e2eSessionLogin, expectStatus, firstCondominium, waitForDocumentDownload } from './helpers/api';
 import { cleanupE2EData, TEST_PREFIX, uniqueName } from './helpers/cleanup';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
@@ -83,7 +83,7 @@ test('production API rejects unauthenticated, invalid, and resident-forbidden op
       filePath: '',
     },
   });
-  await expectStatus(invalidDocument, 400);
+  await expectStatus(invalidDocument, 410);
 
   const residentContext = await playwrightRequest.newContext({ baseURL });
   try {
@@ -204,6 +204,12 @@ test('production API supports full test-data lifecycle for buildings, units, pla
   });
   await expectStatus(ticketComment, 201);
 
+  const ticketInProgress = await request.patch(`${baseURL}/api/v1/condominiums/${condo.id}/tickets/${ticketBody.id}`, {
+    headers: { origin: baseURL },
+    data: { status: 'in_progress', assignedStaff: `${TEST_PREFIX}Equipe manutencao` },
+  });
+  await expectStatus(ticketInProgress, 200);
+
   const ticketResolved = await request.patch(`${baseURL}/api/v1/condominiums/${condo.id}/tickets/${ticketBody.id}`, {
     headers: { origin: baseURL },
     data: { status: 'resolved', assignedStaff: `${TEST_PREFIX}Equipe manutencao`, actualCost: 199.9 },
@@ -233,21 +239,22 @@ test('production API supports full test-data lifecycle for buildings, units, pla
   await expectStatus(chargePaid, 200);
   expect((await chargePaid.json()).paidAt).toBeTruthy();
 
-  const document = await request.post(`${baseURL}/api/v1/condominiums/${condo.id}/documents`, {
+  const document = await request.post(`${baseURL}/api/v1/condominiums/${condo.id}/documents/upload`, {
     headers: { origin: baseURL },
-    data: {
-      title: uniqueName('DOCUMENT_FULL'),
+    multipart: {
+      files: { name: `${uniqueName('DOCUMENT_FULL')}.txt`, mimeType: 'text/plain', buffer: Buffer.from(`${TEST_PREFIX}full document`) },
       category: 'operations',
       requiredRole: 'resident',
       unitId: unit.id,
-      filePath: `${TEST_PREFIX}full-document.pdf`,
     },
   });
   await expectStatus(document, 201);
-  const documentBody = await document.json();
+  const documentBody = (await document.json()).uploads[0];
 
-  const download = await request.get(`${baseURL}/api/v1/condominiums/${condo.id}/documents/${documentBody.id}/download`);
-  await expectStatus(download, 410);
+  const downloadLink = await waitForDocumentDownload(request, baseURL, condo.id, documentBody.id);
+  await expectStatus(downloadLink, 200);
+  const download = await request.get(`${baseURL}${(await downloadLink.json()).url}`);
+  await expectStatus(download, 200);
 
   const audit = await request.post(`${baseURL}/api/v1/accounts/${condo.accountId}/audit`, {
     headers: { origin: baseURL },

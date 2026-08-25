@@ -8,6 +8,13 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
+html,
+body,
+#root {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background-color: #0A0B0D;
   color: #CBD5E1;

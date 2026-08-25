@@ -11,6 +11,10 @@ async function runTests() {
   let billingPeriodId: string | null = null;
   let tempUnitId: string | null = null;
   let tempBuildingId: string | null = null;
+  let equipmentId: string | null = null;
+  let equipmentWithoutDatesId: string | null = null;
+  let planId: string | null = null;
+  let commentId: string | null = null;
 
   try {
     // 1. Authenticate as Syndic
@@ -89,6 +93,15 @@ async function runTests() {
     assert.strictEqual(ticket.status, 'reported', "Ticket status should initially be reported");
     console.log(`✔ Ticket created successfully: ${ticket.title} (${ticket.id})`);
 
+    const invalidDirectResolutionRes = await fetch(`${BASE_URL}/condominiums/${condoId}/tickets/${ticket.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: syndicCookie },
+      body: JSON.stringify({ status: 'resolved' }),
+    });
+    assert.strictEqual(invalidDirectResolutionRes.status, 409, "Should reject reported -> resolved transition");
+    const unchangedTicket = await prisma.maintenanceTicket.findUniqueOrThrow({ where: { id: ticket.id } });
+    assert.strictEqual(unchangedTicket.status, 'reported', "Rejected transition must not alter ticket status");
+
     // Add Comment
     console.log("Adding comment to the ticket...");
     const commentRes = await fetch(`${BASE_URL}/condominiums/${condoId}/tickets/${ticket.id}/comments`, {
@@ -102,6 +115,8 @@ async function runTests() {
       })
     });
     assert.strictEqual(commentRes.status, 201, "Should add comment successfully");
+    const comment = (await commentRes.json()) as any;
+    commentId = comment.id;
     console.log("✔ Comment added successfully");
 
     // Transition Status (reported -> in_progress)
@@ -122,6 +137,23 @@ async function runTests() {
     assert.strictEqual(patchedTicket.status, 'in_progress', "Status should be updated");
     assert.strictEqual(patchedTicket.assignedStaff, 'Eletrotécnica J. Silva', "Assignee should be updated");
     console.log("✔ Ticket status transitioned successfully");
+
+    const resolveTicketRes = await fetch(`${BASE_URL}/condominiums/${condoId}/tickets/${ticket.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: syndicCookie },
+      body: JSON.stringify({ status: 'resolved', actualCost: 325 }),
+    });
+    assert.strictEqual(resolveTicketRes.status, 200, "Should resolve an in-progress ticket");
+    const resolvedTicket = (await resolveTicketRes.json()) as any;
+    assert.strictEqual(resolvedTicket.status, 'resolved');
+    assert.ok(resolvedTicket.resolvedAt, "Resolved ticket should record resolvedAt");
+
+    const reopenResolvedTicketRes = await fetch(`${BASE_URL}/condominiums/${condoId}/tickets/${ticket.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: syndicCookie },
+      body: JSON.stringify({ status: 'in_progress' }),
+    });
+    assert.strictEqual(reopenResolvedTicketRes.status, 409, "Should reject transitions from terminal resolved status");
 
     // 3. Test Billing Tracker Workflow using a disposable charge
     console.log("Testing billing validation...");
@@ -159,6 +191,55 @@ async function runTests() {
     assert.strictEqual(invalidEquipmentRes.status, 400, "Should reject invalid equipment payload");
     console.log("✔ Invalid equipment payload rejected successfully (400)");
 
+    const missingEquipmentDatesRes = await fetch(`${BASE_URL}/condominiums/${condoId}/equipment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: syndicCookie },
+      body: JSON.stringify({
+        name: `Equipment without dates ${Date.now()}`,
+        location: 'Casa de máquinas',
+        category: 'Bomba',
+        status: 'operational',
+      }),
+    });
+    assert.strictEqual(missingEquipmentDatesRes.status, 201, "Equipment with unknown dates should be accepted");
+    const equipmentWithoutDates = (await missingEquipmentDatesRes.json()) as any;
+    equipmentWithoutDatesId = equipmentWithoutDates.id;
+    assert.strictEqual(equipmentWithoutDates.installDate, null, "Unknown install date must remain null");
+    assert.strictEqual(equipmentWithoutDates.lastInspection, null, "Unknown inspection date must remain null");
+    assert.strictEqual(equipmentWithoutDates.nextInspection, null, "Unknown next inspection date must remain null");
+
+    const equipmentDates = {
+      installDate: '2020-01-15T00:00:00.000Z',
+      lastInspection: '2026-01-10T00:00:00.000Z',
+      nextInspection: '2027-01-10T00:00:00.000Z',
+    };
+    const createEquipmentRes = await fetch(`${BASE_URL}/condominiums/${condoId}/equipment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: syndicCookie },
+      body: JSON.stringify({
+        name: `TEST_OPS_Bomba ${Date.now()}`,
+        location: 'Casa de máquinas',
+        category: 'Bomba',
+        status: 'operational',
+        ...equipmentDates,
+      }),
+    });
+    assert.strictEqual(createEquipmentRes.status, 201, "Should create equipment with explicit dates");
+    const equipment = (await createEquipmentRes.json()) as any;
+    equipmentId = equipment.id;
+    assert.strictEqual(equipment.installDate, equipmentDates.installDate, "Install date must be preserved exactly");
+    assert.strictEqual(equipment.lastInspection, equipmentDates.lastInspection, "Inspection date must not become today");
+
+    const updateEquipmentRes = await fetch(`${BASE_URL}/condominiums/${condoId}/equipment/${equipment.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: syndicCookie },
+      body: JSON.stringify({ status: 'maintenance' }),
+    });
+    assert.strictEqual(updateEquipmentRes.status, 200, "Should update equipment");
+    const updatedEquipment = (await updateEquipmentRes.json()) as any;
+    assert.strictEqual(updatedEquipment.installDate, equipmentDates.installDate, "Unsent dates must remain unchanged");
+    assert.strictEqual(updatedEquipment.status, 'maintenance');
+
     console.log("Testing maintenance plan validation...");
     const invalidPlanRes = await fetch(`${BASE_URL}/condominiums/${condoId}/plans`, {
       method: 'POST',
@@ -177,6 +258,30 @@ async function runTests() {
     });
     assert.strictEqual(invalidPlanRes.status, 400, "Should reject invalid maintenance plan payload");
     console.log("✔ Invalid maintenance plan payload rejected successfully (400)");
+
+    const createPlanRes = await fetch(`${BASE_URL}/condominiums/${condoId}/plans`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: syndicCookie },
+      body: JSON.stringify({
+        equipmentId: equipment.id,
+        title: `TEST_OPS_Plano ${Date.now()}`,
+        description: 'Inspeção preventiva do equipamento de teste.',
+        frequency: 'annual',
+        nextOccurrence: '2027-01-10T00:00:00.000Z',
+        status: 'active',
+      }),
+    });
+    assert.strictEqual(createPlanRes.status, 201, "Should create maintenance plan");
+    const plan = (await createPlanRes.json()) as any;
+    planId = plan.id;
+
+    const updatePlanRes = await fetch(`${BASE_URL}/condominiums/${condoId}/plans/${plan.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: syndicCookie },
+      body: JSON.stringify({ status: 'suspended' }),
+    });
+    assert.strictEqual(updatePlanRes.status, 200, "Should update maintenance plan");
+    assert.strictEqual(((await updatePlanRes.json()) as any).status, 'suspended');
 
     console.log("Creating disposable billing charge...");
     const monthString = `2099-${String((Date.now() % 12) + 1).padStart(2, '0')}`;
@@ -228,6 +333,13 @@ async function runTests() {
     const chargeAudit = auditLogs.find((event) => event.entity === 'Charge' && event.entityId === pendingCharge.id);
     assert.ok(chargeAudit, "Should find an audit event for the disposable charge");
     assert.strictEqual(chargeAudit.action, 'update', "Charge audit event action should be update");
+    assert.ok(auditLogs.some((event) => event.entity === 'MaintenanceTicket' && event.entityId === ticket.id && event.action === 'create'), "Ticket creation must be audited");
+    assert.ok(auditLogs.some((event) => event.entity === 'MaintenanceTicket' && event.entityId === ticket.id && event.action === 'update' && event.details.includes('in_progress')), "Ticket status transition must be audited");
+    assert.ok(auditLogs.some((event) => event.entity === 'TicketComment' && event.entityId === comment.id && event.action === 'create'), "Ticket comment must be audited");
+    assert.ok(auditLogs.some((event) => event.entity === 'Equipment' && event.entityId === equipment.id && event.action === 'create'), "Equipment creation must be audited");
+    assert.ok(auditLogs.some((event) => event.entity === 'Equipment' && event.entityId === equipment.id && event.action === 'update'), "Equipment update must be audited");
+    assert.ok(auditLogs.some((event) => event.entity === 'MaintenancePlan' && event.entityId === plan.id && event.action === 'create'), "Plan creation must be audited");
+    assert.ok(auditLogs.some((event) => event.entity === 'MaintenancePlan' && event.entityId === plan.id && event.action === 'update'), "Plan update must be audited");
     console.log(`✔ Audit log verified: "${chargeAudit.details}"`);
 
     console.log("All GCV Operational Workflows tests completed with SUCCESS.");
@@ -237,10 +349,28 @@ async function runTests() {
     });
 
     if (ticketId) {
+      if (commentId) {
+        await prisma.auditEvent.deleteMany({ where: { entity: 'TicketComment', entityId: commentId } });
+      }
       await prisma.ticketComment.deleteMany({ where: { ticketId } });
       await prisma.ticketStatusHistory.deleteMany({ where: { ticketId } });
       await prisma.auditEvent.deleteMany({ where: { entity: 'MaintenanceTicket', entityId: ticketId } });
       await prisma.maintenanceTicket.deleteMany({ where: { id: ticketId } });
+    }
+
+    if (planId) {
+      await prisma.auditEvent.deleteMany({ where: { entity: 'MaintenancePlan', entityId: planId } });
+      await prisma.maintenancePlan.deleteMany({ where: { id: planId } });
+    }
+
+    if (equipmentId) {
+      await prisma.auditEvent.deleteMany({ where: { entity: 'Equipment', entityId: equipmentId } });
+      await prisma.equipment.deleteMany({ where: { id: equipmentId } });
+    }
+
+    if (equipmentWithoutDatesId) {
+      await prisma.auditEvent.deleteMany({ where: { entity: 'Equipment', entityId: equipmentWithoutDatesId } });
+      await prisma.equipment.deleteMany({ where: { id: equipmentWithoutDatesId } });
     }
 
     if (chargeId) {

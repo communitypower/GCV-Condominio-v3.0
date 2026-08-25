@@ -12,7 +12,6 @@ import {
   UnitType,
 } from '@prisma/client';
 import { z } from 'zod';
-import path from 'path';
 import { requireAuth, requireRole, tenantGuard } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
 import { createInvitationInTransaction, finalizeInvitationDelivery, serializeInvitation } from '../services/invitations';
@@ -72,17 +71,11 @@ function validateRecord(entity: DataImportEntity, record: ImportRecord, row: num
   }
 
   if (entity === DataImportEntity.documents) {
-    ['title', 'category', 'filePath'].forEach(required);
-    if (record.requiredRole && !Object.values(PlatformRole).includes(record.requiredRole as PlatformRole)) {
-      issues.push({ row, field: 'requiredRole', message: 'Perfil de acesso inválido.' });
-    }
-    const filePath = textValue(record, 'filePath');
-    if (path.isAbsolute(filePath) || filePath.split(/[\\/]+/).includes('..')) {
-      issues.push({ row, field: 'filePath', message: 'Use um caminho relativo, sem segmentos "..".' });
-    }
-    if ((record.building && !record.unitNumber) || (!record.building && record.unitNumber)) {
-      issues.push({ row, field: 'unitNumber', message: 'Edifício e unidade devem ser informados juntos.' });
-    }
+    issues.push({
+      row,
+      field: 'file',
+      message: 'Manifestos de caminhos foram descontinuados. Use a aba Arquivos para enviar o conteúdo com validação e checksum.',
+    });
   }
 
   return issues;
@@ -163,25 +156,11 @@ async function applyRecord(db: DbClient, condoId: string, entity: DataImportEnti
     throw new Error('Resident imports must use the invitation lifecycle.');
   }
 
-  const building = textValue(record, 'building');
-  const unitNumber = textValue(record, 'unitNumber');
-  const unit = building && unitNumber ? await resolveUnit(db, condoId, building, unitNumber) : null;
-  if (building && unitNumber && !unit) throw new Error('Unidade vinculada ao documento não encontrada.');
-  const title = textValue(record, 'title');
-  const filePath = textValue(record, 'filePath');
-  const existing = await db.document.findFirst({ where: { condominiumId: condoId, title, filePath } });
-  if (existing) return existing;
-  return db.document.create({
-    data: {
-      condominiumId: condoId,
-      unitId: unit?.id,
-      title,
-      category: textValue(record, 'category'),
-      requiredRole: (record.requiredRole as PlatformRole) || PlatformRole.resident,
-      filePath,
-      versions: { create: { versionNumber: 1, filePath, uploadedBy } },
-    },
-  });
+  if (entity === DataImportEntity.documents) {
+    throw new Error('Document imports must use the authenticated upload lifecycle.');
+  }
+
+  throw new Error(`Unsupported import entity: ${entity}; uploaded by ${uploadedBy}`);
 }
 
 router.get('/:condoId/imports', requireAuth, tenantGuard, requireRole([PlatformRole.syndic]), async (req, res) => {
@@ -210,6 +189,12 @@ export function recordReference(entity: DataImportEntity, record: ImportRecord) 
 
 router.post('/:condoId/imports/validate', requireAuth, tenantGuard, requireRole([PlatformRole.syndic]), validateBody(createImportSchema), async (req: any, res) => {
   const { source, entity, fileName, records } = req.body;
+  if (entity === DataImportEntity.documents) {
+    return res.status(410).json({
+      error: 'Manifestos de documentos foram descontinuados. Envie os arquivos pela aba Arquivos.',
+      code: 'DOCUMENT_UPLOAD_REQUIRED',
+    });
+  }
   const structuralIssues = records.flatMap((record: ImportRecord, index: number) => validateRecord(entity, record, index + 2));
   const referenceIssues = await validateReferences(req.params.condoId, entity, records);
   const issues = [...structuralIssues, ...referenceIssues];

@@ -179,15 +179,17 @@ BETA_ALLOWED_EMAILS=<comma-separated-beta-user-emails>
 
 GOOGLE_CLIENT_ID=<provider-client-id>
 GOOGLE_CLIENT_SECRET=<provider-client-secret>
-MICROSOFT_CLIENT_ID=<provider-client-id>
-MICROSOFT_CLIENT_SECRET=<provider-client-secret>
-MICROSOFT_TENANT_ID=common
 
+ENABLE_DOCUMENT_INGESTION=false
 ENABLE_AI_ASSISTANT=false
 ENABLE_GITHUB_INTEGRATION=false
 ENABLE_DEMO_EXPORTS=false
+ENABLE_E2E_TESTING=false
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=<approved-model-only-when-ai-is-enabled>
+
+PASSWORD_RESET_EMAIL_WEBHOOK_URL=<approved-mail-delivery-endpoint>
+PASSWORD_RESET_EMAIL_WEBHOOK_TOKEN=<secret>
 ```
 
 The helper script sets these known variables automatically on each app service:
@@ -196,11 +198,13 @@ The helper script sets these known variables automatically on each app service:
 - `DATABASE_URL` using the matching Railway PostgreSQL service reference
 - `SESSION_SECRET` generated with a strong random value during `--apply`
 - `BETA_ALLOWED_EMAILS` using the synthetic beta list unless overridden
-- `MICROSOFT_TENANT_ID=common`
+- `ENABLE_DOCUMENT_INGESTION=false`
 - `ENABLE_AI_ASSISTANT=false`
 - `ENABLE_GITHUB_INTEGRATION=false`
 - `ENABLE_DEMO_EXPORTS=false`
-- `GEMINI_MODEL=gemini-3.5-flash`
+- `ENABLE_E2E_TESTING=false`
+
+Microsoft OAuth is unavailable in this beta build and its credentials are not required. Do not configure placeholder credentials.
 
 Configure these pending values before expecting staging/production to boot and pass OAuth validation:
 
@@ -211,8 +215,6 @@ export APP_URL_PRODUCTION="https://<production-domain>"
 
 export GOOGLE_CLIENT_ID="<google-client-id>"
 export GOOGLE_CLIENT_SECRET="<google-client-secret>"
-export MICROSOFT_CLIENT_ID="<microsoft-client-id>"
-export MICROSOFT_CLIENT_SECRET="<microsoft-client-secret>"
 
 export BETA_ALLOWED_EMAILS_STAGING="<comma-separated-test-beta-emails>"
 export BETA_ALLOWED_EMAILS_PRODUCTION="<comma-separated-approved-real-beta-emails>"
@@ -384,7 +386,7 @@ Database credential rotation:
 
 OAuth secret rotation:
 
-1. Rotate secret in Google/Microsoft provider console.
+1. Rotate the Google secret in Google Cloud.
 2. Update Railway variable.
 3. Validate login in staging.
 4. Apply to production.
@@ -395,8 +397,10 @@ Use Railway variables and redeploy/restart:
 
 ```env
 ENABLE_AI_ASSISTANT=false
+ENABLE_DOCUMENT_INGESTION=false
 ENABLE_GITHUB_INTEGRATION=false
 ENABLE_DEMO_EXPORTS=false
+ENABLE_E2E_TESTING=false
 ```
 
 Use these immediately for:

@@ -1,30 +1,29 @@
 # Product Closure Status
 
-Date: 2026-07-11
+Date: 2026-08-21
 
-Status: controlled beta is deployed in Railway. Technical baseline is operational; backup/restore, release governance, privacy review, and formal go/no-go remain open before broader real-data adoption.
+Status: `v1.1.0-beta.1` candidate is locally validated. Production remains on the previous healthy image with AI/E2E disabled and automatic GitHub deployment disconnected. Formal decision remains **NO-GO** pending candidate CI/staging, OAuth-secret rotation, scheduled backup, branch protection and owner approval.
 
 ## Latest Verified Baseline
 
-- Source commit: `e4b426c` (`docs: define full product architecture and execution plan`).
-- GitHub Actions `GCV SaaS CI`: passed on commit `e4b426c`.
-- GitHub Actions `GCV SaaS Security`: Gitleaks and CodeQL passed on commit `e4b426c`.
-- Railway `dev`, `staging`, and `production`: deployments completed with `SUCCESS` on 2026-07-11.
-- `/health`, `/livez`, and `/readyz`: HTTP 200 in all three environments.
-- Production Playwright suite: 6/6 tests passed after deployment, including governance, tenant restrictions, dashboard session flows, data lifecycle, and cleanup.
-- Local validation: typecheck, production build, unit/harness tests, complete API smoke suite, and dependency audit passed; `npm audit` found zero vulnerabilities.
+- Release branch: `release/v1.1.0-beta.1`; immutable commit is not selected yet.
+- Local candidate: 19 migrations applied from zero without drift; typecheck/build/audit passed with zero dependency findings.
+- Automated evidence: auth/access/CSRF, role flow, core API, ingestion/RAG, 13/13 Chromium E2E and 2/2 read-only production smoke tests passed.
+- Test cleanup: zero remaining core `TEST_E2E_` accounts, documents, equipment, plans or tickets.
+- Production `/health`, `/livez` and `/readyz`: HTTP 200 after containment.
+- Production logical checkpoint: created outside the worktree with restricted permissions and recorded SHA-256; scheduled external backup remains open.
 
 ## Environment Reality
 
 | Environment | App | Database | Runtime variable | Feature posture |
 |---|---|---|---|---|
-| `dev` | Railway isolated service/domain | isolated Railway PostgreSQL | `NODE_ENV=production` | AI/GitHub/demo exports disabled |
-| `staging` | Railway isolated service/domain | isolated Railway PostgreSQL | `NODE_ENV=production` | AI/GitHub/demo exports disabled |
-| `production` | Railway isolated service/domain | isolated Railway PostgreSQL | `NODE_ENV=production` | AI enabled; GitHub/demo exports disabled; E2E testing endpoint enabled |
+| `dev` | Railway isolated service/domain | isolated Railway PostgreSQL | Review pending | Previous healthy version |
+| `staging` | Railway isolated service/domain + document volume | isolated Railway PostgreSQL | `NODE_ENV=staging` configured for next deploy | Profile A: document ingestion/AI/GitHub/demo/E2E disabled |
+| `production` | Railway isolated service/domain | isolated Railway PostgreSQL | `NODE_ENV=production` | Profile A containment: document ingestion/AI/GitHub/demo/E2E disabled |
 
 `dev` and `staging` currently use production runtime behavior intentionally to serve the built application and enforce production-like protections. Environment identity must not be inferred only from `NODE_ENV`; a future change should add an explicit `APP_ENV` if behavior or observability needs to distinguish them.
 
-Current Railway source integration auto-deploys `main` to all three app services. This differs from the documented promotion policy and remains an open release-governance item.
+The GitHub source was disconnected from staging and production to stop unapproved `main` deployments. Candidate promotion is manual until repository protection and an immutable promotion workflow are approved.
 
 ## Completed
 
@@ -43,15 +42,15 @@ Current Railway source integration auto-deploys `main` to all three app services
 
 ## Open Gates
 
-- [ ] Disable automatic production deployment from every `main` push; promote an immutable artifact/tag with approval.
-- [ ] Add Playwright critical-path coverage to CI against an ephemeral application/database.
-- [ ] Decide whether production `ENABLE_E2E_TESTING` remains enabled; restrict and monitor it if retained.
+- [x] Disable automatic production deployment from every `main` push.
+- [x] Add Playwright critical-path coverage to CI against an ephemeral application/database.
+- [x] Disable production `ENABLE_E2E_TESTING` and remove its secret.
 - [ ] Enable and verify Railway production backups.
 - [x] Perform a Railway staging/recovery restore drill and update `docs/RESTORE_DRILL_LOG.md`.
 - [x] Record RPO, RTO, restored row counts, operator, source backup, and date.
 - [ ] Configure scheduled encrypted external logical backups because the current Railway plan does not expose native backups.
 - [ ] Complete manual Google OAuth verification for approved beta identities after the latest deployment.
-- [ ] Keep Microsoft OAuth out of release acceptance until real credentials and callbacks are configured.
+- [x] Keep Microsoft OAuth out of release acceptance until real credentials and callbacks are intentionally restored.
 - [ ] Complete LGPD/privacy review before using AI with real tenant data.
 - [ ] Complete and sign `docs/BETA_GO_NO_GO_CHECKLIST.md`.
 - [ ] Create a SemVer release tag only after go approval.

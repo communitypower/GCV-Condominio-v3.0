@@ -35,7 +35,11 @@ export default function Equipments({
   const [newLocation, setNewLocation] = useState('');
   const [newCategory, setNewCategory] = useState('Hidráulica');
   const [newStatus, setNewStatus] = useState<'operational' | 'alert' | 'critical' | 'maintenance'>('operational');
-  const [newInstallDate, setNewInstallDate] = useState('2024-01-10');
+  const [newInstallDate, setNewInstallDate] = useState('');
+
+  const formatDate = (value: string | null) => value
+    ? new Date(value).toLocaleDateString('pt-BR')
+    : 'Não informado';
 
   // Categories extracted dynamically from initial list
   const categories = Array.from(new Set(equipments.map(e => e.category)));
@@ -75,9 +79,9 @@ export default function Equipments({
       location: newLocation,
       category: newCategory,
       status: newStatus,
-      lastInspection: new Date().toISOString().split('T')[0],
-      nextInspection: new Date(Date.now() + 60*24*60*60*1000).toISOString().split('T')[0], // 60 days in future
-      installDate: newInstallDate
+      lastInspection: null,
+      nextInspection: null,
+      installDate: newInstallDate || null,
     };
     onAddEquipment(newEq);
     setShowAddForm(false);
@@ -204,17 +208,17 @@ export default function Equipments({
               </div>
               <div>
                 <span className="text-zinc-500 block">Instalação</span>
-                <span className="font-semibold text-zinc-350">{new Date(eq.installDate).toLocaleDateString('pt-BR')}</span>
+                <span className="font-semibold text-zinc-350">{formatDate(eq.installDate)}</span>
               </div>
               <div className="mt-1">
                 <span className="text-zinc-500 block">Última Inspeção</span>
-                <span className="font-semibold text-zinc-350">{new Date(eq.lastInspection).toLocaleDateString('pt-BR')}</span>
+                <span className="font-semibold text-zinc-350">{formatDate(eq.lastInspection)}</span>
               </div>
               <div className="mt-1">
                 <span className="text-zinc-500 block">Próxima Inspeção</span>
                 <span className="font-semibold text-zinc-350 flex items-center gap-1">
                   <Calendar className="w-3 h-3 text-[#10b981]" />
-                  {new Date(eq.nextInspection).toLocaleDateString('pt-BR')}
+                  {formatDate(eq.nextInspection)}
                 </span>
               </div>
             </div>
@@ -400,7 +404,7 @@ export default function Equipments({
                   <label className="text-zinc-400 block">Última Inspeção</label>
                   <input 
                     type="date" 
-                    value={selectedEqForEdit.lastInspection} 
+                    value={selectedEqForEdit.lastInspection || ''}
                     onChange={(e) => setSelectedEqForEdit({...selectedEqForEdit, lastInspection: e.target.value})} 
                     className="w-full bg-[#0d0e12] border border-zinc-800 text-white rounded p-2"
                   />
@@ -409,7 +413,7 @@ export default function Equipments({
                   <label className="text-zinc-400 block">Próxima Inspeção</label>
                   <input 
                     type="date" 
-                    value={selectedEqForEdit.nextInspection} 
+                    value={selectedEqForEdit.nextInspection || ''}
                     onChange={(e) => setSelectedEqForEdit({...selectedEqForEdit, nextInspection: e.target.value})} 
                     className="w-full bg-[#0d0e12] border border-zinc-800 text-white rounded p-2"
                   />
