@@ -1,4 +1,47 @@
+import { connect } from 'node:http2';
+
 type ScanResult = { status: 'clean' | 'infected' | 'unavailable'; details?: string };
+
+async function scanWithClamavRestH2c(endpoint: string, input: { buffer: Buffer; mimeType: string; fileName?: string | null }) {
+  const url = new URL(endpoint);
+  if (url.protocol !== 'http:') throw new Error('CLAMAV_REST_H2C_REQUIRES_HTTP');
+
+  const boundary = `----gcv-${crypto.randomUUID()}`;
+  const fileName = (input.fileName || 'document').replace(/[\r\n"]/g, '_');
+  const payload = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${input.mimeType}\r\n\r\n`),
+    input.buffer,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+
+  return new Promise<number>((resolve, reject) => {
+    const client = connect(url.origin);
+    const timeout = setTimeout(() => finish(new Error('CLAMAV_REST_TIMEOUT')), 30_000);
+    let finished = false;
+    const finish = (result: number | Error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      client.close();
+      result instanceof Error ? reject(result) : resolve(result);
+    };
+    client.once('error', finish);
+    const request = client.request({
+      ':method': 'POST',
+      ':path': `${url.pathname}${url.search}`,
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+      'content-length': String(payload.length),
+      ...(process.env.DOCUMENT_ANTIVIRUS_TOKEN ? { authorization: `Bearer ${process.env.DOCUMENT_ANTIVIRUS_TOKEN}` } : {}),
+    });
+    request.once('error', finish);
+    request.once('response', (headers) => {
+      const status = Number(headers[':status']);
+      request.resume();
+      request.once('end', () => finish(status));
+    });
+    request.end(payload);
+  });
+}
 
 export function requiresCleanMalwareScan() {
   if (process.env.DOCUMENT_AV_FAIL_CLOSED === 'true') return true;
@@ -21,28 +64,24 @@ export async function scanDocumentContent(input: { buffer: Buffer; mimeType: str
   }
   try {
     const isClamavRest = protocol === 'clamav_rest';
+    if (isClamavRest) {
+      const status = await scanWithClamavRestH2c(endpoint, input);
+      if (status === 406) return { status: 'infected', details: 'ClamAV identificou conteúdo malicioso.' };
+      if (status >= 200 && status < 300) return { status: 'clean', details: 'Arquivo verificado pelo ClamAV.' };
+      return { status: 'unavailable', details: `ClamAV respondeu HTTP ${status}; arquivo mantido em quarentena.` };
+    }
     const headers = {
-      ...(isClamavRest ? {} : { 'Content-Type': input.mimeType, 'X-File-Name': encodeURIComponent(input.fileName || 'document') }),
+      'Content-Type': input.mimeType,
+      'X-File-Name': encodeURIComponent(input.fileName || 'document'),
       ...(process.env.DOCUMENT_ANTIVIRUS_TOKEN ? { Authorization: `Bearer ${process.env.DOCUMENT_ANTIVIRUS_TOKEN}` } : {}),
     };
-    const body = isClamavRest
-      ? (() => {
-          const form = new FormData();
-          form.append('file', new Blob([new Uint8Array(input.buffer)], { type: input.mimeType }), input.fileName || 'document');
-          return form;
-        })()
-      : new Uint8Array(input.buffer);
+    const body = new Uint8Array(input.buffer);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers,
       body,
       signal: AbortSignal.timeout(30_000),
     });
-    if (protocol === 'clamav_rest') {
-      if (response.status === 406) return { status: 'infected', details: 'ClamAV identificou conteúdo malicioso.' };
-      if (!response.ok) return { status: 'unavailable', details: `ClamAV respondeu HTTP ${response.status}; arquivo mantido em quarentena.` };
-      return { status: 'clean', details: 'Arquivo verificado pelo ClamAV.' };
-    }
     if (!response.ok) return { status: 'unavailable', details: `Antivírus respondeu HTTP ${response.status}; arquivo mantido em quarentena.` };
     const result = await response.json() as { status?: string; details?: string };
     if (result.status !== 'clean' && result.status !== 'infected') {
