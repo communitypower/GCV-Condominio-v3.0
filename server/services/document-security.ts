@@ -13,6 +13,7 @@ function syntheticScanBypassAllowed() {
 
 export async function scanDocumentContent(input: { buffer: Buffer; mimeType: string; fileName?: string | null }): Promise<ScanResult> {
   const endpoint = process.env.DOCUMENT_ANTIVIRUS_URL;
+  const protocol = process.env.DOCUMENT_ANTIVIRUS_PROTOCOL || 'json';
   if (!endpoint) {
     return syntheticScanBypassAllowed()
       ? { status: 'clean', details: 'Bypass sintético permitido somente em ambiente local/teste.' }
@@ -29,6 +30,11 @@ export async function scanDocumentContent(input: { buffer: Buffer; mimeType: str
       body: new Uint8Array(input.buffer),
       signal: AbortSignal.timeout(30_000),
     });
+    if (protocol === 'clamav_rest') {
+      if (response.status === 406) return { status: 'infected', details: 'ClamAV identificou conteúdo malicioso.' };
+      if (!response.ok) return { status: 'unavailable', details: `ClamAV respondeu HTTP ${response.status}; arquivo mantido em quarentena.` };
+      return { status: 'clean', details: 'Arquivo verificado pelo ClamAV.' };
+    }
     if (!response.ok) return { status: 'unavailable', details: `Antivírus respondeu HTTP ${response.status}; arquivo mantido em quarentena.` };
     const result = await response.json() as { status?: string; details?: string };
     if (result.status !== 'clean' && result.status !== 'infected') {
