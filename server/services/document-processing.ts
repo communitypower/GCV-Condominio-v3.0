@@ -26,6 +26,7 @@ export async function processDocumentVersion(versionId: string) {
     });
     const buffer = await readDocumentFile(version.filePath);
     const scan = await scanDocumentContent({ buffer, mimeType: version.mimeType, fileName: version.originalFileName });
+    console.info(JSON.stringify({ event: 'document_scan_completed', versionId: version.id, status: scan.status }));
     await prisma.documentVersion.update({
       where: { id: version.id },
       data: {
@@ -125,6 +126,7 @@ export async function processDocumentVersion(versionId: string) {
         },
       });
     });
+    console.info(JSON.stringify({ event: 'document_processing_completed', versionId: version.id, status: extraction.partialReason ? 'partial' : 'indexed', chunkCount: chunks.length }));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Falha desconhecida no processamento documental.';
     await prisma.documentVersion.updateMany({
