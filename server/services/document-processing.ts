@@ -154,11 +154,19 @@ function drainDocumentProcessingQueue() {
 export async function resumePendingDocumentProcessing() {
   const pending = await prisma.documentVersion.findMany({
     where: {
-      processingStatus: { in: [
-        DocumentProcessingStatus.queued,
-        DocumentProcessingStatus.scanning,
-        DocumentProcessingStatus.extracting,
-      ] },
+      OR: [
+        {
+          processingStatus: { in: [
+            DocumentProcessingStatus.queued,
+            DocumentProcessingStatus.scanning,
+            DocumentProcessingStatus.extracting,
+          ] },
+        },
+        {
+          processingStatus: DocumentProcessingStatus.failed,
+          processingError: { startsWith: 'Antivírus indisponível' },
+        },
+      ],
       document: { deletedAt: null },
     },
     select: { id: true },
