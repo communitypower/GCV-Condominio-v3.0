@@ -53,9 +53,6 @@ function assertRequiredEnv() {
   }
 
   if (process.env.ENABLE_AI_ASSISTANT === "true") {
-    if (process.env.ENABLE_DOCUMENT_INGESTION !== "true") {
-      throw new Error("ENABLE_AI_ASSISTANT requires ENABLE_DOCUMENT_INGESTION=true");
-    }
     if (process.env.AI_PROVIDER === 'vertex_ai') required.push('GOOGLE_CLOUD_PROJECT');
     else required.push("GEMINI_API_KEY");
   }
