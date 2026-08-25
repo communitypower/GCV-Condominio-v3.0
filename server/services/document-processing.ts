@@ -26,7 +26,7 @@ export async function processDocumentVersion(versionId: string) {
     });
     const buffer = await readDocumentFile(version.filePath);
     const scan = await scanDocumentContent({ buffer, mimeType: version.mimeType, fileName: version.originalFileName });
-    console.info(JSON.stringify({ event: 'document_scan_completed', versionId: version.id, status: scan.status }));
+    console.info(JSON.stringify({ event: 'document_scan_completed', versionId: version.id, status: scan.status, details: scan.details }));
     await prisma.documentVersion.update({
       where: { id: version.id },
       data: {
