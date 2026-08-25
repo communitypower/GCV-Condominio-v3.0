@@ -160,7 +160,11 @@ export default function DataImports({ condoId }: DataImportsProps) {
     xhr.upload.onprogress = (event) => { if (event.lengthComputable) updateQueue(item.id, { progress: Math.min(90, Math.round(event.loaded / event.total * 90)) }); };
     xhr.onload = () => {
       xhrById.current.delete(item.id); let data: any = null; try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { data = null; }
-      if (xhr.status < 200 || xhr.status >= 300) { updateQueue(item.id, { status: 'failed', error: data?.error || `Falha no upload (${xhr.status}).` }); return; }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const itemError = data?.errors?.find((entry: any) => entry?.fileName === item.file.name) || data?.errors?.[0];
+        updateQueue(item.id, { status: 'failed', error: data?.error || itemError?.message || `Falha no upload (${xhr.status}).` });
+        return;
+      }
       const uploaded = data?.uploads?.[0] || data?.document || data?.documents?.[0] || data;
       updateQueue(item.id, { status: 'processing', progress: 95, documentId: uploaded?.id || uploaded?.documentId, versionId: uploaded?.latestVersion?.id || uploaded?.versionId }); loadCatalog(true);
     };
