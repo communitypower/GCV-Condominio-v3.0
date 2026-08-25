@@ -20,14 +20,22 @@ export async function scanDocumentContent(input: { buffer: Buffer; mimeType: str
       : { status: 'unavailable', details: 'Antivírus não configurado; arquivo mantido em quarentena.' };
   }
   try {
+    const isClamavRest = protocol === 'clamav_rest';
+    const headers = {
+      ...(isClamavRest ? {} : { 'Content-Type': input.mimeType, 'X-File-Name': encodeURIComponent(input.fileName || 'document') }),
+      ...(process.env.DOCUMENT_ANTIVIRUS_TOKEN ? { Authorization: `Bearer ${process.env.DOCUMENT_ANTIVIRUS_TOKEN}` } : {}),
+    };
+    const body = isClamavRest
+      ? (() => {
+          const form = new FormData();
+          form.append('file', new Blob([new Uint8Array(input.buffer)], { type: input.mimeType }), input.fileName || 'document');
+          return form;
+        })()
+      : new Uint8Array(input.buffer);
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': input.mimeType,
-        'X-File-Name': encodeURIComponent(input.fileName || 'document'),
-        ...(process.env.DOCUMENT_ANTIVIRUS_TOKEN ? { Authorization: `Bearer ${process.env.DOCUMENT_ANTIVIRUS_TOKEN}` } : {}),
-      },
-      body: new Uint8Array(input.buffer),
+      headers,
+      body,
       signal: AbortSignal.timeout(30_000),
     });
     if (protocol === 'clamav_rest') {
